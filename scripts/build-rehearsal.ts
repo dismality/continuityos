@@ -3,7 +3,8 @@
  * styled exactly like the dashboard: Tailwind v4 is compiled from src/app/globals.css.
  * React is loaded from cdnjs as UMD globals; everything else is inlined.
  *
- *   bun scripts/build-rehearsal.ts out/continuityos-live.html
+ *   bun scripts/build-rehearsal.ts cloudflare-site/index.html   (full web page, used by `npm run build:site`)
+ *   ARTIFACT=1 bun scripts/build-rehearsal.ts out/page.html       (body-only fragment for hosts that add their own <html>)
  *
  * Optional env for unusual setups:
  *   LIVE_BUILD_ALIASES='{"pkg":"/abs/path"}'   replace packages that are not installed
@@ -84,9 +85,22 @@ ${css}
 <div id="root"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-<script>document.documentElement.classList.add("h-full","antialiased");document.body.className="flex min-h-full flex-col bg-muted/30";</script>
+<script>${process.env.ARTIFACT ? "window.__lvNoDownload=true;" : ""}document.documentElement.classList.add("h-full","antialiased");document.body.className="flex min-h-full flex-col bg-muted/30";</script>
 <script>${js}</script>
 `;
+const page = process.env.ARTIFACT
+  ? html
+  : `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="ContinuityOS Live: an AI agent that covers a sick closing lead by negotiating with crew and asking the manager before acting.">
+${html.slice(0, html.indexOf('<div id="root">'))}</head>
+<body>
+${html.slice(html.indexOf('<div id="root">'))}</body>
+</html>
+`;
 mkdirSync(dirname(resolve(out)), { recursive: true });
-writeFileSync(out, html);
-console.log(`wrote ${out} (${(html.length / 1024).toFixed(0)} KB)`);
+writeFileSync(out, page);
+console.log(`wrote ${out} (${(page.length / 1024).toFixed(0)} KB)`);

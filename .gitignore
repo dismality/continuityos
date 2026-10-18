@@ -1,6 +1,5 @@
 node_modules/
 .next/
-cloudflare-site/
 next-env.d.ts
 *.tsbuildinfo
 .env

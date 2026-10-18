@@ -34,11 +34,23 @@ npm run dev
 
 - Projector: `http://localhost:3000/live`
 - Manager phone: `http://localhost:3000/live/manager`. Alternatively, the presenter opens `https://t.me/<bot>?start=mgr-<CODE>` (the code is in the join link) to become the manager inside Telegram, where approvals arrive as buttons.
-- Rehearsal with no bot, no keys and no network: `http://localhost:3000/live?rehearsal=1`, or `npm run build:rehearsal` for a single offline HTML file.
+- Rehearsal with no bot, no keys and no network: `http://localhost:3000/live?rehearsal=1`, or `npm run build:site` for a single static page in `cloudflare-site/`.
 
 The server long-polls Telegram, so it works from a laptop on venue Wi-Fi with no tunnel. To deploy publicly instead, set `TELEGRAM_WEBHOOK_SECRET` and register `https://<host>/api/telegram/webhook` with `setWebhook`.
 
 Before the pitch: replace the "before" numbers (45 min, 23 messages, 3 apps) in `src/live/scenario.ts` → `DEFAULT_BASELINE` with what a real manager tells you. Everything in `BUSINESS` and the crew list can be edited too.
+
+### Public website (Cloudflare)
+
+`cloudflare-site/index.html` is the rehearsal version as one static page (simulated phones, no server). It is deployed as the Cloudflare Worker `continuityos` (see `wrangler.jsonc`):
+
+```bash
+npm run deploy:site   # rebuilds the page, then npx wrangler deploy
+```
+
+If the repo is connected to Cloudflare (Workers & Pages → Import a repository), every push to `main` redeploys it automatically: leave the build command empty and use `npx wrangler deploy` as the deploy command.
+
+The Telegram live mode needs a long-running Node server (it keeps the session in memory and polls Telegram), so run it with `npm run dev`/`npm start` on a laptop or a Node host such as Render, not on Cloudflare's static hosting.
 
 ### How it's built
 

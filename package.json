@@ -11,7 +11,8 @@
     "test": "node --test tests/solver.test.mts tests/live.test.mts",
     "db:push": "drizzle-kit push",
     "tunnel": "cloudflared tunnel --url http://127.0.0.1:3000",
-    "build:rehearsal": "bun scripts/build-rehearsal.ts out/continuityos-live.html"
+    "build:site": "bun scripts/build-rehearsal.ts cloudflare-site/index.html",
+    "deploy:site": "npm run build:site && npx wrangler deploy"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
