@@ -1,0 +1,31 @@
+/* Live Mode motion for the negotiation map. Everything else uses the dashboard's Tailwind + shadcn styles. */
+.live-edge {
+  stroke-dasharray: 6 8;
+  animation: live-flow 0.9s linear infinite;
+}
+.live-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: live-pulse 1.6s ease-out infinite;
+}
+@keyframes live-flow {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+@keyframes live-pulse {
+  from {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-edge,
+  .live-pulse {
+    animation: none;
+  }
+}
