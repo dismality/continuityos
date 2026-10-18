@@ -26,10 +26,12 @@ const heuristics: Understanding = {
 export function buttonToParsed(action: string, asked: Window): ParsedReply {
   if (action === "yes") return { intent: "accept", window: asked, confidence: 1, via: "button" };
   if (action === "no") return { intent: "decline", confidence: 1, via: "button" };
+  if (action === "onway") return { intent: "on_way", confidence: 1, via: "button" };
+  if (action === "cant") return { intent: "cannot_work", confidence: 1, via: "button" };
   return { intent: "partial", confidence: 1, via: "button", note: "ask_hours" };
 }
 
-const BUTTON_TEXT: Record<string, string> = { yes: "✅ Yes, all of it", part: "🕐 Part of it", no: "❌ Can't tonight" };
+const BUTTON_TEXT: Record<string, string> = { yes: "✅ Yes, all of it", part: "🕐 Part of it", no: "❌ Can't tonight", onway: "🏃 On my way", cant: "🤒 Can't make it" };
 
 export class Runtime {
   state: LiveState;
@@ -132,6 +134,7 @@ export class Runtime {
     const c = this.state.crew.find((x) => x.id === crewId);
     const m = c?.thread.find((x) => x.id === msgId);
     if (!c || !m || c.seat?.kind === "telegram") return;
+    // the rostered worker stays silent on the check-in message so the no-show path can be shown
     const wantsAnswer = m.tag === "offer" || m.tag === "chase" || (m.tag === "info" && !!m.buttons?.length);
     if (!wantsAnswer || c.status === "human") return;
     const i = this.persona.get(crewId) ?? 0;

@@ -8,16 +8,19 @@ The original ShiftPilot scheduling application remains in the repository. The ha
 
 The headline demo. A database-free session where real people join from their phones, the agent negotiates with them over Telegram, and the projector shows every step.
 
-### What the room sees
+### What happens
 
-1. **Join.** `/live` shows a QR code. Each judge who scans it gets a crew seat (Daniel, Farah, Mei, Jun, Priya), filled in rank order. Empty seats are played by simulated phones on screen.
-2. **Goal.** The manager sends one message, from Telegram or the box on screen: *"Aisha's sick, sort out tonight's close, keep extras under $150."* The agent shows what it understood and any assumptions it made.
-3. **Rules and ranking.** Four people are excluded, each with a reason (weekly hour cap, rest before an opening shift, no food-safety certificate, on leave). Tap any node for "Why not?".
-4. **Approval gate 1.** Nothing is sent until the manager taps Approve.
-5. **Parallel negotiation.** Offers go out, and judges reply in their own words: "only after 7, need a grab", "who called in sick?", "can I talk to the manager?". The agent parses each reply with a confidence score. It never reveals who is absent. It asks again when unsure, and pauses for a human when asked. It re-plans after every reply, so a partial yes turns into a split shift and the next people are asked only for the gap. Non-responders get one reminder and are then skipped.
-6. **Approval gate 2.** The full package (who, when, extra spend against the budget) goes to the manager's phone with Approve / Reject buttons.
-7. **Execute and verify.** The roster is published, the chosen people are confirmed and everyone else is released. Each confirmation carries a Telegram `message_id` as a delivery receipt.
-8. **Before / after.** Measured elapsed time and manager taps, against your manual baseline.
+Nobody has to start anything. The agent watches tonight's roster.
+
+1. **It spots the problem.** Aisha, the rostered closing lead, texts the bot "fever, can't make tonight" in her own words. Or she doesn't check in: the agent messages her once ("are you on your way?") and treats silence as a no-show.
+2. **It checks the rules.** Four people are ruled out, each with a reason (weekly hour cap, rest before an opening shift, no food-safety certificate, on leave). The rest are ranked by fairness and travel time.
+3. **It asks crew straight away**, without asking the manager first: the manager allowed that once, in the rules. People reply in their own words ("only after 7, need a grab", "who called in sick?", "can I talk to the manager?"). The agent never says who is absent or why, asks again when unsure, and hands over to the manager when someone asks for a person.
+4. **It rebuilds the plan on every reply**, so a partial yes becomes a split shift and the next people are asked only for the gap. Non-responders get one reminder, then are skipped.
+5. **It confirms on its own** when extras stay within the manager's auto-approve rule (S$30 by default). Above that, it asks the manager once.
+6. **It tells everyone**: confirms the people covering, releases the rest, publishes the roster.
+7. **It checks every message arrived** and sends the manager one message: "Sorted. Nothing needed from you."
+
+With Telegram, the first judge to scan the QR code plays Aisha and the next ones play the crew.
 
 **Break it live:** the presenter bar's *Break messaging* button makes every send fail. The agent retries with backoff and marks people unreachable after 3 attempts. It then moves on to the next person, and recovers once messaging is restored. Everything lands in the audit trail, which you can export as JSON.
 
@@ -33,7 +36,7 @@ npm run dev
 ```
 
 - Projector: `http://localhost:3000/live`
-- Manager phone: `http://localhost:3000/live/manager`. Alternatively, the presenter opens `https://t.me/<bot>?start=mgr-<CODE>` (the code is in the join link) to become the manager inside Telegram, where approvals arrive as buttons.
+- Manager phone: `http://localhost:3000/live/manager`, or `https://t.me/<bot>?start=mgr-<CODE>` to get the manager's messages in Telegram. Usually that is one message at the end.
 - Rehearsal with no bot, no keys and no network: `http://localhost:3000/live?rehearsal=1`, or `npm run build:site` for a single static page in `cloudflare-site/`.
 
 The server long-polls Telegram, so it works from a laptop on venue Wi-Fi with no tunnel. To deploy publicly instead, set `TELEGRAM_WEBHOOK_SECRET` and register `https://<host>/api/telegram/webhook` with `setWebhook`.

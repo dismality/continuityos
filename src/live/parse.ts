@@ -66,6 +66,11 @@ export function parseReply(text: string, asked: Window = SHIFT): ParsedReply {
   if (has(t, /\b(no longer|not anymore|can't anymore|cannot anymore|something came up|have to cancel|need to cancel|take it back)\b/))
     return { intent: "withdraw", confidence: 0.85, via: "heuristic" };
 
+  if (has(t, /\b(on my way|omw|otw|coming now|running late|almost there|be there in|reaching soon|leaving now)\b/))
+    return { intent: "on_way", confidence: 0.88, via: "heuristic" };
+  if (has(t, /\b(sick|fever|unwell|ill|mc|flu|covid|not feeling well|throwing up|vomit\w*|emergency|hospital|can't make (it|tonight|today)|cannot make|won't make it|not coming|can't come in)\b/) && !window)
+    return { intent: "cannot_work", confidence: 0.9, via: "heuristic" };
+
   const negative = has(t, /\b(no|nope|can't|cannot|cant|unable|not available|busy|sorry,? (i )?can't|not tonight|pass|won't)\b/);
   const positive = has(t, /\b(yes|yeah|yep|yup|ok|okay|sure|can do|i can|count me in|on it|i'm in|im in|will do|ya|can)\b/);
 

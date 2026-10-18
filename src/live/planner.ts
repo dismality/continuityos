@@ -4,6 +4,7 @@ import type { Condition, Crew, Goal, Plan, Segment, Window } from "./types.ts";
 /** Hard rules. Returns null when the worker may be offered (part of) the shift, else the reason. */
 export function whyNot(c: Crew, goal: Pick<Goal, "window" | "absent">): string | null {
   if (c.name === goal.absent) return "Reported absent tonight";
+  if (c.rostered) return "Already rostered on this shift";
   if (c.onLeave) return "On approved leave this week";
   if (!c.certified) return `No food-safety certificate: can't lead a close`;
   const left = c.maxHours - c.hoursThisWeek;

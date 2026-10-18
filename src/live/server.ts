@@ -13,7 +13,7 @@ import type { ParsedReply } from "./types.ts";
  */
 
 const ReplySchema = z.object({
-  intent: z.enum(["accept", "partial", "conditional", "decline", "ask_who", "ask_pay", "ask_where", "question", "human", "withdraw", "unclear"]),
+  intent: z.enum(["accept", "partial", "conditional", "decline", "ask_who", "ask_pay", "ask_where", "question", "human", "withdraw", "cannot_work", "on_way", "unclear"]),
   start: z.string().nullable().describe("HH:MM 24h start of the hours they can work, if they limited it"),
   end: z.string().nullable().describe("HH:MM 24h end of the hours they can work, if they limited it"),
   transport: z.boolean().describe("They need a ride / taxi / transport"),
@@ -31,7 +31,7 @@ const llmUnderstanding: Understanding = {
         schema: ReplySchema,
         effort: "none",
         system:
-          "You read a part-time worker's chat reply to a shift-cover request and classify it. accept = yes to the whole window asked; partial = yes but only some hours; conditional = yes if a ride or extra pay is given; ask_who = asks who is absent or why; human = wants to talk to the manager or a person; withdraw = takes back an earlier yes; unclear = cannot tell. Be calibrated: use low confidence when unsure.",
+          "You read a part-time worker's chat reply to a shift-cover request and classify it. accept = yes to the whole window asked; partial = yes but only some hours; conditional = yes if a ride or extra pay is given; ask_who = asks who is absent or why; human = wants to talk to the manager or a person; withdraw = takes back an earlier yes; cannot_work = says they are sick or cannot come in for their own shift; on_way = says they are coming or running late; unclear = cannot tell. Be calibrated: use low confidence when unsure.",
         user: JSON.stringify({ asked_window: fmtWindow(asked), worker: crew.name, reply: text }),
       });
       const s = data.start ? toHour(data.start) : null;

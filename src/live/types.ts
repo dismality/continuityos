@@ -13,6 +13,9 @@ export type Seat =
   | { kind: "sim" };
 
 export type CrewStatus =
+  | "rostered" // on tonight's roster (the person whose shift the agent watches)
+  | "checking" // rostered but not checked in; the agent asked if they are coming
+  | "absent" // reported sick or did not show up
   | "bench" // eligible, not contacted yet
   | "ineligible" // excluded by a hard rule (see whyNot)
   | "contacted"
@@ -45,7 +48,7 @@ export type Msg = {
   /** inbound understanding */
   parsed?: ParsedReply;
   from?: "agent" | "manager";
-  tag?: "welcome" | "offer" | "chase" | "confirm" | "release" | "info";
+  tag?: "welcome" | "check" | "offer" | "chase" | "confirm" | "release" | "info";
 };
 
 export type Button = { label: string; data: string };
@@ -63,6 +66,7 @@ export type Crew = {
   travelMin: number;
   rate: number; // S$/h
   seat: Seat | null;
+  rostered?: boolean;
   status: CrewStatus;
   offer?: Offer;
   askedWindow?: Window; // window we asked them for (full shift, or a gap)
@@ -81,9 +85,10 @@ export type Goal = {
   role: string;
   window: Window;
   budget: number;
-  via: "heuristic" | "llm";
+  via: "heuristic" | "llm" | "detected";
   confidence: number;
   assumptions: string[];
+  trigger?: { kind: "sick" | "no_show" | "manager"; crewId?: string; text?: string; at: number };
 };
 
 export type ReplyIntent =
@@ -97,6 +102,8 @@ export type ReplyIntent =
   | "question"
   | "human"
   | "withdraw"
+  | "cannot_work"
+  | "on_way"
   | "unclear";
 
 export type ParsedReply = {
@@ -137,7 +144,7 @@ export type Plan = {
   explanation: string;
 };
 
-export type Phase = "lobby" | "awaiting_outreach" | "negotiating" | "awaiting_package" | "executing" | "done";
+export type Phase = "lobby" | "checking" | "awaiting_outreach" | "negotiating" | "awaiting_package" | "executing" | "done";
 
 export type AuditEntry = {
   id: number;
@@ -149,7 +156,7 @@ export type AuditEntry = {
   status?: "ok" | "warn" | "fail" | "wait";
 };
 
-export type StepId = "understand" | "rank" | "approve_outreach" | "negotiate" | "replan" | "approve_package" | "execute" | "verify";
+export type StepId = "detect" | "rank" | "approve_outreach" | "negotiate" | "replan" | "confirm" | "notify" | "verify";
 
 export type Step = { id: StepId; title: string; detail: string; status: "waiting" | "active" | "done" | "blocked" };
 
@@ -162,6 +169,12 @@ export type Settings = {
   giveUpAfterSec: number;
   retryDelaySec: number;
   maxAttempts: number;
+  /** standing permission: message eligible crew without asking first */
+  autoOutreach: boolean;
+  /** standing permission: confirm cover without asking when extras stay at or under this */
+  autoApproveSpend: number;
+  /** seconds to wait for a reply to the "are you coming?" check before treating it as a no-show */
+  noShowWaitSec: number;
 };
 
 export type LiveState = {
@@ -198,6 +211,7 @@ export type LiveEvent =
   | { type: "reply"; crewId: string; text: string; parsed: ParsedReply }
   | { type: "send_result"; crewId: string; msgId: string; ok: boolean; evidence?: string; error?: string }
   | { type: "tick" }
+  | { type: "no_show"; crewId: string }
   | { type: "failure"; on: boolean }
   | { type: "takeover"; crewId: string; on: boolean }
   | { type: "manager_say"; crewId: string; text: string }

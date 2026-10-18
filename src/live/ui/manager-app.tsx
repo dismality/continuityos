@@ -12,7 +12,7 @@ import { clock, fmtElapsed, useLive, useNow, type Source } from "./use-live.ts";
 export function ManagerApp({ source = "server" }: { source?: Source }) {
   const { state, act } = useLive(source);
   const now = useNow(1000);
-  const [goal, setGoal] = useState("Aisha's sick, sort out tonight's close, keep extras under $150");
+  const [goal, setGoal] = useState("Aisha just called, she's sick tonight");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   if (!state) return <div className="dashboard flex min-h-screen items-center justify-center bg-muted/20 text-sm text-muted-foreground">Connecting…</div>;
   const pending = new Set(state.gates.filter((g) => g.status === "pending").map((g) => g.id));
@@ -41,26 +41,30 @@ export function ManagerApp({ source = "server" }: { source?: Source }) {
           <Card>
             <CardHeader>
               <CardTitle>
-                <h2>What do you need?</h2>
+                <h2>Nothing needs you right now</h2>
               </CardTitle>
-              <CardDescription>Say it the way you would text a colleague.</CardDescription>
+              <CardDescription>The agent watches tonight&apos;s roster. If someone calls in sick or doesn&apos;t show up, it finds cover within your rules and tells you here when it&apos;s done.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void act({ action: "goal", text: goal });
-                }}
-              >
-                <label htmlFor="mgr-goal" className="sr-only">
-                  Your request
-                </label>
-                <textarea id="mgr-goal" rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full resize-none rounded-xl border bg-muted/25 p-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" />
-                <Button type="submit" className="mt-3 w-full">
-                  <Play className="size-4" />
-                  Hand it to the agent
-                </Button>
-              </form>
+              <details>
+                <summary className="cursor-pointer text-xs text-muted-foreground">Report an absence yourself</summary>
+                <form
+                  className="mt-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void act({ action: "goal", text: goal });
+                  }}
+                >
+                  <label htmlFor="mgr-goal" className="sr-only">
+                    What happened
+                  </label>
+                  <textarea id="mgr-goal" rows={2} value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full resize-none rounded-xl border bg-muted/25 p-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" />
+                  <Button type="submit" className="mt-3 w-full">
+                    <Play className="size-4" />
+                    Hand it to the agent
+                  </Button>
+                </form>
+              </details>
             </CardContent>
           </Card>
         )}

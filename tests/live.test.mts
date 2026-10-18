@@ -19,11 +19,10 @@ function harness() {
       if (fx.kind === "send") go({ type: "send_result", crewId: fx.crewId, msgId: fx.msgId, ok: !fail.has(fx.crewId), evidence: "test", error: "down" });
     }
   };
-  const reply = (crewId: string, text: string) => go({ type: "reply", crewId, text, parsed: parseReply(text, s.crew.find((c) => c.id === crewId)!.askedWindow) });
-  const start = (goal = "Aisha's sick, sort out tonight's close, keep extras under $150") => {
-    go({ type: "goal", text: goal, goal: parseGoal(goal) });
-    go({ type: "decide", gateId: s.gates[0].id, approve: true, via: "projector" });
-  };
+  function reply(crewId: string, text: string) {
+    go({ type: "reply", crewId, text, parsed: parseReply(text, s.crew.find((c) => c.id === crewId)!.askedWindow) });
+  }
+  const start = () => reply("aisha", "sorry, fever, can't make it tonight");
   return { get s() { return s; }, go, reply, start, sent, fail, tick: (sec: number) => { now += sec * 1000; go({ type: "tick" }); } };
 }
 
@@ -37,6 +36,8 @@ test("parser reads messy replies", () => {
   assert.equal(parseReply("can I talk to the manager first?").intent, "human");
   assert.equal(parseReply("sorry can't tonight").intent, "decline");
   assert.equal(parseReply("hmm").intent, "unclear");
+  assert.equal(parseReply("fever since lunch, can't make it").intent, "cannot_work");
+  assert.equal(parseReply("omw!").intent, "on_way");
 });
 
 test("goal parsing surfaces assumptions", () => {
@@ -44,19 +45,45 @@ test("goal parsing surfaces assumptions", () => {
   assert.ok(parseGoal("need cover pls").assumptions.length >= 2);
 });
 
-test("hard rules exclude with reasons, and nothing is sent before approval", () => {
+test("a sick text from the rostered worker starts the recovery with no manager input", () => {
   const h = harness();
-  h.go({ type: "goal", text: "Aisha's sick tonight", goal: parseGoal("Aisha's sick tonight") });
+  h.reply("aisha", "so sorry, fever since this afternoon, can't make tonight's close");
+  assert.equal(h.s.goal?.trigger?.kind, "sick");
+  assert.equal(h.s.crew.find((c) => c.id === "aisha")!.status, "absent");
   const excluded = h.s.crew.filter((c) => c.status === "ineligible").map((c) => c.name).sort();
   assert.deepEqual(excluded, ["Chloe", "Leon", "Marcus", "Raj"]);
-  assert.equal(h.sent.filter((f) => f.kind === "send").length, 0);
-  assert.equal(h.s.phase, "awaiting_outreach");
+  assert.deepEqual(h.s.crew.filter((c) => c.status === "contacted").map((c) => c.name), ["Daniel", "Farah", "Mei"]);
+  assert.equal(h.s.managerTaps, 0);
 });
 
-test("split shift: partial yes + bridge, then approval, then verified", () => {
+test("with auto-messaging off, nothing is sent before approval", () => {
+  const h = harness();
+  h.go({ type: "settings", settings: { autoOutreach: false } });
+  h.reply("aisha", "I'm sick, not coming in");
+  assert.equal(h.s.phase, "awaiting_outreach");
+  assert.equal(h.s.crew.filter((c) => c.contactedAt).length, 0);
+});
+
+test("no-show: one check-in message, then cover starts if there is no reply", () => {
+  const h = harness();
+  h.go({ type: "no_show", crewId: "aisha" });
+  assert.equal(h.s.phase, "checking");
+  h.tick(31);
+  assert.equal(h.s.goal?.trigger?.kind, "no_show");
+  assert.equal(h.s.phase, "negotiating");
+});
+
+test("no-show: 'on my way' cancels the recovery", () => {
+  const h = harness();
+  h.go({ type: "no_show", crewId: "aisha" });
+  h.reply("aisha", "omw, running late sorry");
+  assert.equal(h.s.phase, "lobby");
+  assert.equal(h.s.goal, undefined);
+});
+
+test("split shift is confirmed automatically within the spend rule", () => {
   const h = harness();
   h.start();
-  assert.deepEqual(h.s.crew.filter((c) => c.status === "contacted").map((c) => c.name), ["Daniel", "Farah", "Mei"]);
   h.reply("daniel", "only from 7pm and I need a grab");
   assert.deepEqual(h.s.plan!.gaps, [{ start: 17, end: 19 }]);
   h.reply("mei", "who called in sick?");
@@ -67,22 +94,22 @@ test("split shift: partial yes + bridge, then approval, then verified", () => {
   const asked = h.s.crew.filter((c) => c.askedWindow?.start === 17 && c.askedWindow.end === 19).map((c) => c.name);
   assert.ok(asked.length >= 1, "asks the next people only for the gap");
   h.reply(h.s.crew.find((c) => c.name === asked[0])!.id, "yes");
-  assert.equal(h.s.phase, "awaiting_package");
-  const pkg = h.s.gates.find((g) => g.kind === "package")!;
-  assert.equal(pkg.extraCost, 19);
-  h.go({ type: "decide", gateId: pkg.id, approve: true, via: "projector" });
   assert.equal(h.s.phase, "done");
   assert.ok(h.s.verified!.every((v) => v.ok));
-  assert.equal(h.s.managerTaps, 2);
+  assert.equal(h.s.managerTaps, 0);
+  assert.match(h.s.managerInbox.at(-1)!.text, /Nothing needed from you/);
 });
 
-test("over-budget conditions are refused, not committed", () => {
+test("spend above the rule asks the manager once", () => {
   const h = harness();
-  h.start("Aisha's sick, sort out tonight's close, keep extras under $10");
+  h.go({ type: "settings", settings: { autoApproveSpend: 0 } });
+  h.start();
   h.reply("daniel", "yes but I need a grab");
-  const d = h.s.crew.find((c) => c.id === "daniel")!;
-  assert.equal(d.status, "negotiating");
-  assert.match(d.thread.at(-1)!.text, /more than I'm allowed/);
+  assert.equal(h.s.phase, "awaiting_package");
+  const g = h.s.gates.find((x) => x.kind === "package")!;
+  h.go({ type: "decide", gateId: g.id, approve: true, via: "projector" });
+  assert.equal(h.s.phase, "done");
+  assert.equal(h.s.managerTaps, 1);
 });
 
 test("failed sends retry, then the agent moves to the next person", () => {

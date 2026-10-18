@@ -1,6 +1,6 @@
 import { buildPlan, conditionsFor, rank, whyNot } from "./planner.ts";
-import { BUSINESS, DEFAULT_BASELINE, DEFAULT_SETTINGS, fmtWindow, freshCrew } from "./scenario.ts";
-import type { AuditEntry, Button, Crew, Effect, Gate, LiveEvent, LiveState, Msg, Plan, Step, Window } from "./types.ts";
+import { BUSINESS, DEFAULT_BASELINE, DEFAULT_SETTINGS, fmtHour, fmtWindow, freshCrew } from "./scenario.ts";
+import type { AuditEntry, Button, Crew, Effect, Gate, Goal, LiveEvent, LiveState, Msg, Plan, Step, Window } from "./types.ts";
 
 /**
  * The agent as a pure state machine: (state, event, now) → (state, effects).
@@ -18,7 +18,7 @@ export function initialState(opts: { mode: LiveState["mode"]; code: string; tele
     mode: opts.mode,
     telegram: opts.telegram ?? { enabled: false },
     phase: "lobby",
-    crew: freshCrew().map((c) => (whyNot(c, { window: SHIFT, absent: BUSINESS.absent }) ? { ...c, status: "ineligible" } : c)),
+    crew: freshCrew().map((c) => (!c.rostered && whyNot(c, { window: SHIFT, absent: "" }) ? { ...c, status: "ineligible" } : c)),
     gates: [],
     steps: deriveSteps(),
     audit: [],
@@ -107,7 +107,7 @@ function handle(ctx: Ctx, ev: LiveEvent) {
         ctx.fx.push({ kind: "send_chat", chatId: ev.chatId, text: `You're already ${existing.name} 🙂 Keep this chat open.` });
         return;
       }
-      const order = rank(s.crew, { window: SHIFT, absent: BUSINESS.absent }).map((r) => r.crewId);
+      const order = [...s.crew.filter((c) => c.rostered).map((c) => c.id), ...rank(s.crew, { window: SHIFT, absent: "" }).map((r) => r.crewId)];
       const free = order.map((id) => crewById(s, id)!).find((c) => c.seat === null || c.seat.kind === "sim");
       if (!free) {
         ctx.fx.push({ kind: "send_chat", chatId: ev.chatId, text: "All crew seats are taken for this round. Enjoy the show! 🍿" });
@@ -115,6 +115,15 @@ function handle(ctx: Ctx, ev: LiveEvent) {
       }
       free.seat = { kind: "telegram", chatId: ev.chatId, handle: ev.handle, joinedAt: now };
       log(ctx, "crew", "telegram", `${ev.handle} joined as ${free.name}`, `chat ${ev.chatId}`);
+      if (free.rostered) {
+        send(
+          ctx,
+          free,
+          `Welcome to ${BUSINESS.name} 👋\n\nYou are *${free.name}*, ${free.role.toLowerCase()} on tonight's ${free.outlet} close, ${fmtWindow(SHIFT)}.\n\nWhen the presenter gives the signal, text me that you can't come in, in your own words. Or stay silent when I check on you, to see what happens with a no-show.`,
+          "welcome",
+        );
+        return;
+      }
       send(
         ctx,
         free,
@@ -130,49 +139,39 @@ function handle(ctx: Ctx, ev: LiveEvent) {
       ctx.fx.push({
         kind: "send_chat",
         chatId: ev.chatId,
-        text: `You're the manager of ${BUSINESS.name}. Tell me what you need in your own words, for example:\n\n"Aisha's sick, sort out tonight's close, keep extras under $150"\n\nI'll plan it, ask before I message anyone or spend anything, and report back here.`,
+        text: `You're the manager of ${BUSINESS.name}. You don't need to do anything.\n\nI watch tonight's roster. If someone calls in sick or doesn't show up, I find cover myself using your rules: certified staff only, hour caps and rest respected, extras up to S$${s.settings.autoApproveSpend} without asking.\n\nI'll only message you if something needs a decision, and once more when it's sorted.`,
       });
       return;
     }
 
     case "goal": {
-      if (s.phase !== "lobby") {
-        log(ctx, "manager", "goal", `Ignored new goal while a recovery is running: "${ev.text}"`, undefined, "warn");
+      if (s.phase !== "lobby" && s.phase !== "checking") {
+        log(ctx, "manager", "goal", `Ignored a new report while a recovery is running: "${ev.text}"`, undefined, "warn");
         return;
       }
-      s.goal = ev.goal;
+      const rostered = s.crew.find((c) => c.rostered);
+      startIncident(ctx, "manager", rostered?.id, ev.text);
+      return;
+    }
+
+    case "no_show": {
+      const c = crewById(s, ev.crewId);
+      if (!c || !c.rostered || s.phase !== "lobby") return;
+      s.phase = "checking";
       s.startedAt = now;
-      log(ctx, "manager", ev.goal.via === "llm" ? "llm" : "parser", `Goal received: "${ev.text}"`, `budget S$${ev.goal.budget} · ${fmtWindow(ev.goal.window)} · confidence ${Math.round(ev.goal.confidence * 100)}%`);
-      ev.goal.assumptions.forEach((a) => log(ctx, "agent", "parser", `Assumption: ${a}`, undefined, "warn"));
-      for (const c of s.crew) {
-        const reason = whyNot(c, ev.goal);
-        if (reason) {
-          c.status = "ineligible";
-          log(ctx, "agent", "rules", `Excluded ${c.name}`, reason);
-        } else if (c.status === "ineligible") c.status = "bench";
-      }
-      const order = rank(s.crew, ev.goal);
-      log(ctx, "agent", "ranking", `Ranked ${order.length} eligible crew`, order.map((r, i) => `#${i + 1} ${crewById(s, r.crewId)!.name}`).join(", "));
-      const first = order.slice(0, s.settings.waveSize).map((r) => crewById(s, r.crewId)!.name);
-      const backup = order.slice(s.settings.waveSize, s.settings.maxContacts).map((r) => crewById(s, r.crewId)!.name);
-      const gate: Gate = {
-        id: `g${s.nextId++}`,
-        kind: "outreach",
-        title: "Message crew about tonight's close?",
-        lines: [
-          `Ask ${first.join(", ")} now${backup.length ? `; ${backup.join(", ")} only if needed` : ""}`,
-          `Offer: ${ev.goal.outlet} close ${fmtWindow(ev.goal.window)} at each person's usual rate`,
-          `Messages never say who is absent or why`,
-          `Nothing is final and no money is committed until you approve the roster`,
+      c.status = "checking";
+      c.lastActivityAt = now;
+      log(ctx, "agent", "roster", `${c.name} hasn't checked in 10 minutes after the ${fmtHour(SHIFT.start)} start`, "check-in missing", "warn");
+      send(
+        ctx,
+        c,
+        `Hi ${c.name}, tonight's ${BUSINESS.outlet} close started at ${fmtHour(SHIFT.start)} and you haven't checked in. Are you on your way?`,
+        "check",
+        [
+          { label: "🏃 On my way", data: `r:${c.id}:onway` },
+          { label: "🤒 Can't make it", data: `r:${c.id}:cant` },
         ],
-        extraCost: 0,
-        createdAt: now,
-        status: "pending",
-      };
-      s.gates.push(gate);
-      s.phase = "awaiting_outreach";
-      log(ctx, "agent", "approvals", "Paused for approval before messaging anyone", gate.title, "wait");
-      notifyManager(ctx, `📋 *Plan for tonight's close*\n\n${gate.lines.map((l) => `• ${l}`).join("\n")}\n\nShall I start?`, gateButtons(gate));
+      );
       return;
     }
 
@@ -255,6 +254,14 @@ function handle(ctx: Ctx, ev: LiveEvent) {
             m.attempts = (m.attempts ?? 1) + 1;
             ctx.fx.push({ kind: "send", crewId: c.id, msgId: m.id, text: m.text, buttons: m.buttons });
           }
+      if (s.phase === "checking") {
+        const c = s.crew.find((x) => x.status === "checking");
+        if (c && c.lastActivityAt && (now - c.lastActivityAt) / 1000 >= s.settings.noShowWaitSec) {
+          log(ctx, "agent", "roster", `No reply from ${c.name} ${s.settings.noShowWaitSec}s after the check-in message: treating it as a no-show`, undefined, "warn");
+          startIncident(ctx, "no_show", c.id, "No check-in and no reply");
+        }
+        return;
+      }
       if (s.phase !== "negotiating" && s.phase !== "awaiting_package") return;
       // chase non-responders, then move on
       for (const c of s.crew) {
@@ -313,16 +320,36 @@ function handle(ctx: Ctx, ev: LiveEvent) {
   }
 }
 
-function onReply(ctx: Ctx, c: Crew, p: NonNullable<Msg["parsed"]>) {
+function onReply(ctx: Ctx, c: Crew, parsed: NonNullable<Msg["parsed"]>) {
+  let p = parsed;
   const { s } = ctx;
   const goal = s.goal;
   const asked = c.askedWindow ?? SHIFT;
 
+  if (c.rostered) {
+    const out = p.intent === "cannot_work" || p.intent === "decline" || p.intent === "withdraw";
+    if (out && (s.phase === "lobby" || s.phase === "checking")) {
+      send(ctx, c, `Thanks for telling us, ${c.name}. Rest up 🙏 I'll find cover for tonight; you don't need to do anything else.`, "info");
+      startIncident(ctx, "sick", c.id, c.thread[c.thread.length - 1].text);
+      return;
+    }
+    if ((p.intent === "on_way" || p.intent === "accept") && s.phase === "checking") {
+      c.status = "rostered";
+      s.phase = "lobby";
+      s.startedAt = undefined;
+      log(ctx, "agent", "roster", `${c.name} is on the way: no cover needed`);
+      send(ctx, c, "Great, see you soon! No need to reply further.", "info");
+      return;
+    }
+    send(ctx, c, s.goal ? `Thanks ${c.name}, it's all handled. Feel better!` : `Thanks! You're on tonight's close, ${fmtWindow(SHIFT)}. Message me here if anything changes.`, "info");
+    return;
+  }
+  if (p.intent === "cannot_work") p = { ...p, intent: "decline" };
   if (c.status === "human") {
     notifyManager(ctx, `💬 ${c.name} (waiting for you): "${c.thread[c.thread.length - 1].text}"`);
     return;
   }
-  if (!goal || s.phase === "lobby" || s.phase === "awaiting_outreach") {
+  if (!goal || s.phase === "lobby" || s.phase === "checking" || s.phase === "awaiting_outreach") {
     send(ctx, c, "Thanks! Nothing needs cover right now. I'll message you here if that changes.", "info");
     return;
   }
@@ -360,7 +387,7 @@ function onReply(ctx: Ctx, c: Crew, p: NonNullable<Msg["parsed"]>) {
       c.offer = { window, conditions: conds };
       c.status = "accepted";
       const extras = conds.length ? ` with ${conds.map((x) => x.label[0].toLowerCase() + x.label.slice(1)).join(" and ")}` : "";
-      send(ctx, c, `Great, thank you! I've pencilled you in for ${fmtWindow(window)}${extras}. Your manager confirms in a few minutes; I'll message you here the moment it's final.`, "info");
+      send(ctx, c, `Great, thank you! I've pencilled you in for ${fmtWindow(window)}${extras}. I'll confirm here as soon as the whole shift is covered.`, "info");
       replan(ctx, `${c.name} offered ${fmtWindow(window)}`);
       return;
     }
@@ -374,7 +401,7 @@ function onReply(ctx: Ctx, c: Crew, p: NonNullable<Msg["parsed"]>) {
         s.phase = "negotiating";
         s.finishedAt = undefined;
         log(ctx, "agent", "planner", `${c.name} pulled out after the roster was published: reopening the recovery`, undefined, "warn");
-        notifyManager(ctx, `⚠️ ${c.name} just pulled out of tonight. I'm re-planning now and will come back for approval.`);
+        notifyManager(ctx, `⚠️ ${c.name} just pulled out of tonight. I'm finding someone else now.`);
       }
       replan(ctx, `${c.name} declined`);
       return;
@@ -386,7 +413,7 @@ function onReply(ctx: Ctx, c: Crew, p: NonNullable<Msg["parsed"]>) {
       return;
     case "ask_pay":
       c.status = "negotiating";
-      send(ctx, c, `Your usual S$${c.rate}/h. If you need a ride I can ask the manager to cover it. Can you do ${fmtWindow(asked)}?`, "info", offerButtons(c));
+      send(ctx, c, `Your usual S$${c.rate}/h, and a ride can be covered if you need one. Can you do ${fmtWindow(asked)}?`, "info", offerButtons(c));
       return;
     case "ask_where":
       c.status = "negotiating";
@@ -468,14 +495,19 @@ function replan(ctx: Ctx, why: string) {
 
   if (plan.gaps.length === 0 && plan.withinBudget) {
     if (s.gates.some((g) => g.kind === "package" && g.status === "pending")) return;
+    if (plan.extraCost <= s.settings.autoApproveSpend) {
+      log(ctx, "agent", "policy", `Full cover found. Extras S$${plan.extraCost} are within your S$${s.settings.autoApproveSpend} auto-approve rule: confirming without asking`, plan.explanation);
+      execute(ctx, plan);
+      return;
+    }
     const name = (id: string) => crewById(s, id)!.name;
     const gate: Gate = {
       id: `g${s.nextId++}`,
       kind: "package",
-      title: "Approve tonight's roster?",
+      title: `Approve S$${plan.extraCost} in extras for tonight's cover?`,
       lines: [
         ...plan.segments.map((g) => `${name(g.crewId)}: ${fmtWindow(g.window)}${g.extras.length ? ` (+ ${g.extras.map((x) => x.label).join(", ")})` : ""}`),
-        `Extra spend S$${plan.extraCost} of S$${s.goal.budget} budget`,
+        `S$${plan.extraCost} is above your S$${s.settings.autoApproveSpend} auto-approve rule, so I'm checking with you`,
         `Then: publish roster, confirm each person, thank and release everyone else`,
       ],
       extraCost: plan.extraCost,
@@ -485,8 +517,8 @@ function replan(ctx: Ctx, why: string) {
     };
     s.gates.push(gate);
     s.phase = "awaiting_package";
-    log(ctx, "agent", "approvals", "Full cover found. Paused for approval before confirming anyone or spending", `S$${plan.extraCost} extras`, "wait");
-    notifyManager(ctx, `✅ *Cover found for tonight*\n\n${gate.lines.map((l) => `• ${l}`).join("\n")}\n\nApprove?`, gateButtons(gate));
+    log(ctx, "agent", "approvals", `Full cover found, but extras S$${plan.extraCost} exceed the S$${s.settings.autoApproveSpend} rule: asking the manager`, plan.explanation, "wait");
+    notifyManager(ctx, `💸 *One decision needed*\n\n${gate.lines.map((l) => `• ${l}`).join("\n")}\n\nApprove?`, gateButtons(gate));
     return;
   }
   if (s.phase === "awaiting_package") s.phase = "negotiating";
@@ -523,8 +555,14 @@ function verify(ctx: Ctx) {
   s.phase = "done";
   s.finishedAt = ctx.now;
   log(ctx, "agent", "verify", allOk ? "Verified: roster published and every confirmation delivered" : "Finished with delivery problems (manager notified)", s.verified.map((v) => `${crewById(s, v.crewId)!.name} ${v.ok ? "✓" : "✗"}`).join(", "), allOk ? "ok" : "warn");
-  const mins = Math.max(1, Math.round((ctx.now - (s.startedAt ?? ctx.now)) / 60000));
-  notifyManager(ctx, `🏁 Done. Tonight's close is covered and everyone has been told.\n\n${s.plan?.explanation ?? ""}\nTook ${mins} min and ${s.managerTaps} taps from you.`);
+  const t = s.goal?.trigger;
+  const what = t?.kind === "no_show" ? `${s.goal!.absent} didn't show up or reply` : t?.kind === "manager" ? `You reported ${s.goal!.absent} out` : `${s.goal!.absent} called in sick`;
+  const name = (id: string) => crewById(s, id)!.name;
+  const cover = (s.publishedRoster ?? []).map((g) => `${name(g.crewId)} ${fmtWindow(g.window)}${g.extras.length ? ` (${g.extras.map((x) => x.label[0].toLowerCase() + x.label.slice(1)).join(", ")})` : ""}`).join(", ");
+  notifyManager(
+    ctx,
+    `✅ Sorted: tonight's ${BUSINESS.outlet} close is covered.\n\n${what}. Cover: ${cover}.\nExtras S$${s.plan?.extraCost ?? 0}${s.managerTaps === 0 ? `, within your S$${s.settings.autoApproveSpend} rule` : ""}. Everyone has been told.\n\nNothing needed from you.`,
+  );
 }
 
 function simpleHash(x: string) {
@@ -533,23 +571,90 @@ function simpleHash(x: string) {
   return (h >>> 0).toString(16).slice(0, 7);
 }
 
+// ───────────────────────── incident start
+
+function startIncident(ctx: Ctx, kind: "sick" | "no_show" | "manager", crewId: string | undefined, text: string) {
+  const { s, now } = ctx;
+  if (s.phase !== "lobby" && s.phase !== "checking") return;
+  const absentee = crewId ? crewById(s, crewId) : undefined;
+  const absent = absentee?.name ?? BUSINESS.absent;
+  const goal: Goal = {
+    raw: text,
+    absent,
+    outlet: BUSINESS.outlet,
+    role: BUSINESS.shift.role,
+    window: SHIFT,
+    budget: BUSINESS.defaultBudget,
+    via: "detected",
+    confidence: 1,
+    assumptions: [],
+    trigger: { kind, crewId, text, at: now },
+  };
+  s.goal = goal;
+  s.startedAt = s.startedAt ?? now;
+  if (absentee) absentee.status = "absent";
+  const how = kind === "sick" ? `${absent} called in sick: "${text}"` : kind === "no_show" ? `${absent} is a no-show` : `Manager reported ${absent} out: "${text}"`;
+  log(ctx, kind === "manager" ? "manager" : "agent", "detect", `Gap detected. ${how}`, `${BUSINESS.outlet} ${BUSINESS.shift.role.toLowerCase()} ${fmtWindow(SHIFT)} is now uncovered`, "warn");
+  for (const c of s.crew) {
+    if (c.rostered) continue;
+    const reason = whyNot(c, goal);
+    if (reason) {
+      c.status = "ineligible";
+      log(ctx, "agent", "rules", `Excluded ${c.name}`, reason);
+    } else if (c.status === "ineligible") c.status = "bench";
+  }
+  const order = rank(s.crew, goal);
+  log(ctx, "agent", "ranking", `Ranked ${order.length} eligible crew`, order.map((r, i) => `#${i + 1} ${crewById(s, r.crewId)!.name}`).join(", "));
+  if (s.settings.autoOutreach) {
+    log(ctx, "agent", "policy", "Your standing rules allow it: messaging eligible crew now, no approval needed", `never says who is absent or why · extras up to S$${s.settings.autoApproveSpend} auto-approved`);
+    s.phase = "negotiating";
+    contactWave(ctx);
+    return;
+  }
+  const first = order.slice(0, s.settings.waveSize).map((r) => crewById(s, r.crewId)!.name);
+  const gate: Gate = {
+    id: `g${s.nextId++}`,
+    kind: "outreach",
+    title: "Message crew about tonight's close?",
+    lines: [`Ask ${first.join(", ")} first`, `Messages never say who is absent or why`],
+    extraCost: 0,
+    createdAt: now,
+    status: "pending",
+  };
+  s.gates.push(gate);
+  s.phase = "awaiting_outreach";
+  log(ctx, "agent", "approvals", "Auto-messaging is off: asking the manager first", gate.title, "wait");
+  notifyManager(ctx, `📋 ${how}.\n\n${gate.lines.map((l) => `• ${l}`).join("\n")}\n\nShall I start?`, gateButtons(gate));
+}
+
 // ───────────────────────── visible plan
 
 export function deriveSteps(s?: LiveState): Step[] {
   const phase = s?.phase ?? "lobby";
-  const order = ["lobby", "awaiting_outreach", "negotiating", "awaiting_package", "executing", "done"];
+  const order = ["lobby", "checking", "awaiting_outreach", "negotiating", "awaiting_package", "executing", "done"];
   const at = order.indexOf(phase);
-  const st = (doneFrom: number, activeAt: number[]): Step["status"] => (at >= doneFrom ? "done" : activeAt.includes(at) ? "active" : "waiting");
-  const gaps = s?.plan?.gaps.length ?? 0;
-  const replies = s?.crew.filter((c) => c.thread.some((m) => m.dir === "in")).length ?? 0;
+  const has = Boolean(s?.goal);
+  const asked = s?.crew.filter((c) => c.contactedAt).length ?? 0;
+  const replies = s?.crew.filter((c) => c.contactedAt && c.thread.some((m) => m.dir === "in")).length ?? 0;
+  const t = s?.goal?.trigger;
+  const gate = s?.gates.find((g) => g.kind === "package");
   return [
-    { id: "understand", title: "Understand the goal", detail: s?.goal ? `${s.goal.absent} out · ${fmtWindow(s.goal.window)} · ≤ S$${s.goal.budget} extras` : "Waiting for the manager", status: s?.goal ? "done" : "active" },
-    { id: "rank", title: "Apply rules, rank crew", detail: s?.goal ? `${s.crew.filter((c) => c.status !== "ineligible").length} eligible · ${s.crew.filter((c) => c.status === "ineligible").length} excluded with reasons` : "Certificates, hour caps, rest, leave", status: s?.goal ? "done" : "waiting" },
-    { id: "approve_outreach", title: "Approval: message crew", detail: "Manager taps once", status: st(2, [1]) },
-    { id: "negotiate", title: "Negotiate in parallel", detail: s?.goal && at >= 2 ? `${s.crew.filter((c) => c.contactedAt).length} asked · ${replies} replied` : "Free-text replies, privacy kept", status: st(3, [2]) },
-    { id: "replan", title: "Re-plan on every reply", detail: s?.plan ? s.plan.explanation : "Split shifts, rides, budget", status: at >= 3 && gaps === 0 ? "done" : at === 2 ? "active" : "waiting" },
-    { id: "approve_package", title: "Approval: roster & spend", detail: s?.plan ? `S$${s.plan.extraCost} extras` : "Manager taps once", status: st(4, [3]) },
-    { id: "execute", title: "Publish & notify", detail: "Confirm, thank and release", status: st(5, [4]) },
-    { id: "verify", title: "Verify delivery", detail: s?.verified ? `${s.verified.filter((v) => v.ok).length}/${s.verified.length} receipts` : "Delivery receipts per person", status: phase === "done" ? "done" : at === 4 ? "active" : "waiting" },
+    {
+      id: "detect",
+      title: "Spot the problem",
+      detail: t ? (t.kind === "sick" ? `${s!.goal!.absent} texted in sick` : t.kind === "no_show" ? `${s!.goal!.absent} didn't check in or reply` : `Manager reported ${s!.goal!.absent} out`) : phase === "checking" ? "Someone hasn't checked in: asking if they're coming" : "Watching tonight's roster for sick calls and no-shows",
+      status: has ? "done" : phase === "checking" ? "active" : "waiting",
+    },
+    { id: "rank", title: "Check the rules", detail: has ? `${s!.crew.filter((c) => !c.rostered && c.status !== "ineligible").length} can cover · ${s!.crew.filter((c) => c.status === "ineligible").length} ruled out, each with a reason` : "Certificates, hour caps, rest, leave", status: has ? "done" : "waiting" },
+    { id: "negotiate", title: "Ask crew", detail: has ? `${asked} asked · ${replies} replied` : "Several people at once, in plain language", status: at > 3 ? "done" : at === 3 || at === 2 ? "active" : "waiting" },
+    { id: "replan", title: "Build the cover", detail: s?.plan ? s.plan.explanation : "Split shifts, rides, budget", status: at > 3 ? "done" : at === 3 ? "active" : "waiting" },
+    {
+      id: "confirm",
+      title: "Confirm",
+      detail: gate ? (gate.status === "pending" ? "Over your auto-approve rule: waiting for you" : "Approved by the manager") : at >= 5 ? `Within your rules: confirmed automatically` : `Automatic if extras ≤ S$${s?.settings.autoApproveSpend ?? 30}`,
+      status: at >= 5 ? "done" : at === 4 ? "active" : "waiting",
+    },
+    { id: "notify", title: "Tell everyone", detail: "Confirm cover, release the rest, update the roster", status: at === 6 ? "done" : at === 5 ? "active" : "waiting" },
+    { id: "verify", title: "Check delivery and report", detail: s?.verified ? `${s.verified.filter((v) => v.ok).length}/${s.verified.length} confirmations delivered · manager told once` : "Delivery receipt for every message", status: at === 6 ? "done" : "waiting" },
   ];
 }

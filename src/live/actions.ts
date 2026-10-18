@@ -7,6 +7,7 @@ export type LiveAction =
   | { action: "decide"; gateId: string; approve: boolean; via?: "projector" | "phone" }
   | { action: "failure"; on: boolean }
   | { action: "reset" }
+  | { action: "no_show"; crewId: string }
   | { action: "takeover"; crewId: string; on: boolean }
   | { action: "say"; crewId: string; text: string }
   | { action: "sim_reply"; crewId: string; text: string }
@@ -33,6 +34,9 @@ export async function applyAction(rt: Runtime, a: LiveAction): Promise<{ ok: boo
       return { ok: true };
     case "reset":
       rt.dispatch({ type: "reset" });
+      return { ok: true };
+    case "no_show":
+      rt.dispatch({ type: "no_show", crewId: a.crewId });
       return { ok: true };
     case "takeover":
       rt.dispatch({ type: "takeover", crewId: a.crewId, on: !!a.on });

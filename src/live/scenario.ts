@@ -16,6 +16,19 @@ type CrewSeed = Omit<Crew, "seat" | "status" | "thread" | "chases">;
 
 const seeds: CrewSeed[] = [
   {
+    id: "aisha",
+    name: "Aisha",
+    role: "Closing lead",
+    outlet: "Orchard",
+    certified: true,
+    rostered: true,
+    hoursThisWeek: 30,
+    maxHours: 44,
+    travelMin: 12,
+    rate: 15,
+    persona: ["so sorry, fever since this afternoon 🤒 can't make tonight's close"],
+  },
+  {
     id: "daniel",
     name: "Daniel",
     role: "Food-safety lead",
@@ -128,7 +141,7 @@ const seeds: CrewSeed[] = [
 ];
 
 export function freshCrew(): Crew[] {
-  return seeds.map((s) => ({ ...s, seat: null, status: "bench", thread: [], chases: 0 }));
+  return seeds.map((s) => ({ ...s, seat: null, status: s.rostered ? "rostered" : "bench", thread: [], chases: 0 }));
 }
 
 export const DEFAULT_BASELINE: Baseline = {
@@ -145,6 +158,9 @@ export const DEFAULT_SETTINGS: Settings = {
   giveUpAfterSec: 80,
   retryDelaySec: 4,
   maxAttempts: 3,
+  autoOutreach: true,
+  autoApproveSpend: 30,
+  noShowWaitSec: 30,
 };
 
 export const fmtHour = (h: number) => {
