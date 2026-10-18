@@ -1,8 +1,18 @@
-# ContinuityOS (built from ShiftPilot)
+# ContinuityOS
 
-ContinuityOS is an autonomous disruption manager for multi-outlet businesses. When unexpected absences threaten service, it assesses customer and revenue impact, checks worker qualifications and fairness, negotiates availability, adapts when conditions change, requests approval, and verifies the resulting updates across workplace systems.
+**One less thing for the shift manager.** ContinuityOS is an AI agent that watches today's staff timetable. When someone calls in sick, doesn't show up, or a shift is left empty, it finds cover on its own: it checks the rules, messages the right staff in parallel, rebuilds the timetable from their replies, and only interrupts the manager for real decisions.
 
-The original ShiftPilot scheduling application remains in the repository. The hackathon-ready, database-free ContinuityOS experience is available at `/demo`.
+**Live demo:** https://continuityos.davidwong51423.workers.dev (simulated phones, runs in the browser)
+
+What's on the page:
+
+- **Status**: one line telling the manager whether anything needs them
+- **Today's timetable**: who is on each shift; the AI fills gaps itself, and the manager can edit any shift
+- **Staff chat**: automatic AI messages plus manual messages, with the AI switchable per person
+- **Insights**: the manager's rules, fair hours this week, what the agent remembers about each person, impact so far
+- **Evidence log** and a downloadable **timesheet** with hours and pay
+
+Built for the AIgnition hackathon brief "One Less Thing". The original ShiftPilot app (WhatsApp + Postgres) is still in this repo, and the earlier scripted demo is at `/demo`.
 
 ## Live Mode: the judges are the crew (`/live`)
 
