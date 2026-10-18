@@ -149,7 +149,7 @@ class LiveServer {
         await sendTelegram(chatId, "I can't transcribe voice notes in this build yet. Please type the request.");
         return;
       }
-      const to = text.match(/^@?(\w+)[:,]\s*(.+)$/s);
+      const to = text.match(/^@?(\w+)[:,]\s*([\s\S]+)$/);
       const target = to && rt.state.crew.find((c) => c.name.toLowerCase() === to[1].toLowerCase());
       if (target && to) {
         rt.dispatch({ type: "manager_say", crewId: target.id, text: to[2] });
