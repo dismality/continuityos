@@ -2,17 +2,18 @@ import { BUSINESS, fmtHour, fmtWindow } from "./scenario.ts";
 import type { Condition, Crew, Goal, Plan, Segment, Window } from "./types.ts";
 
 /** Hard rules. Returns null when the worker may be offered (part of) the shift, else the reason. */
-export function whyNot(c: Crew, goal: Pick<Goal, "window" | "absent">): string | null {
-  if (c.name === goal.absent) return "Reported absent tonight";
-  if (c.rostered) return "Already rostered on this shift";
+export function whyNot(c: Crew, goal: Pick<Goal, "window" | "absent"> & { needsCert?: boolean }): string | null {
+  if (c.name === goal.absent) return "Reported absent today";
   if (c.onLeave) return "On approved leave this week";
-  if (!c.certified) return `No food-safety certificate: can't lead a close`;
+  const busy = c.today?.find((w) => w);
+  if (busy) return `Already working today (${fmtWindow(busy)}): one shift a day`;
+  if ((goal.needsCert ?? true) && !c.certified) return "No food-safety certificate: can't lead a shift";
   const left = c.maxHours - c.hoursThisWeek;
   if (left < 2) return `Only ${left}h left before the ${c.maxHours}h weekly cap (${c.hoursThisWeek}h worked)`;
   if (c.nextShiftStart != null) {
     const rest = c.nextShiftStart - goal.window.end;
     if (rest < BUSINESS.minRestHours)
-      return `Opens tomorrow at ${fmtHour(c.nextShiftStart)}: closing tonight leaves ${rest}h rest (minimum ${BUSINESS.minRestHours}h)`;
+      return `Opens tomorrow at ${fmtHour(c.nextShiftStart)}: working until ${fmtHour(goal.window.end)} leaves ${rest}h rest (minimum ${BUSINESS.minRestHours}h)`;
   }
   return null;
 }
@@ -20,7 +21,7 @@ export function whyNot(c: Crew, goal: Pick<Goal, "window" | "absent">): string |
 export type Rank = { crewId: string; score: number; reasons: string[] };
 
 /** Lower score = asked first. Fairness first, then travel. Explained in plain words. */
-export function rank(crew: Crew[], goal: Pick<Goal, "window" | "absent">): Rank[] {
+export function rank(crew: Crew[], goal: Pick<Goal, "window" | "absent"> & { needsCert?: boolean }): Rank[] {
   return crew
     .filter((c) => whyNot(c, goal) === null)
     .map((c) => {
@@ -33,6 +34,7 @@ export function rank(crew: Crew[], goal: Pick<Goal, "window" | "absent">): Rank[
           `${Math.round(load * 100)}% of weekly hours used (${c.hoursThisWeek}/${c.maxHours}h)`,
           `${c.travelMin} min from ${BUSINESS.outlet}`,
           c.outlet === BUSINESS.outlet ? "Knows this outlet" : `Based at ${c.outlet}`,
+          ...(c.notes ?? []).slice(0, 1).map((n) => `Remembered: ${n.toLowerCase()}`),
         ],
       };
     })
@@ -99,7 +101,8 @@ export function buildPlan(crew: Crew[], goal: Goal, previous?: Plan): Plan {
     const base = segs.reduce((a, s) => a + s.base, 0);
     // lexicographic: fewest uncovered slots, within budget, fewest people, least churn vs. the last plan, cheapest
     const churn = [...used].filter((id) => !prevIds.has(id)).length;
-    const key = [uncovered, extra > goal.budget ? 1 : 0, used.size, churn, extra];
+    const overCap = goal.budget > 0 && extra > goal.budget ? 1 : 0; // budget 0 = no cap
+    const key = [uncovered, overCap, used.size, churn, extra];
     const cand = { segs, key, extra, base };
     const cmp = (a: number[], b: number[]) => a.findIndex((v, i) => v !== b[i]);
     const i = best ? cmp(key, best.key) : -1;
@@ -133,7 +136,7 @@ export function buildPlan(crew: Crew[], goal: Goal, previous?: Plan): Plan {
     baseCost: best?.base ?? 0,
     coveredHours,
     totalHours,
-    withinBudget: extraCost <= goal.budget,
+    withinBudget: !(goal.budget > 0) || extraCost <= goal.budget,
     explanation,
   };
 }

@@ -22,6 +22,8 @@ Nobody has to start anything. The agent watches tonight's roster.
 
 With Telegram, the first judge to scan the QR code plays Aisha and the next ones play the crew.
 
+**On the page:** today's timetable (click a shift to change who is on it; clear one and the agent fills it by itself, and a second gap during a recovery is queued), staff chat (the AI messages automatically; the manager can message anyone by hand, switch the AI off per person, or ask the AI to offer the open shift to someone), fair-hours chart, what the agent remembers about each person, impact so far, the evidence log, and today's timesheet with hours and pay as a downloadable document or CSV. There is no spending cap: extras within the auto-approve rule (S$30 by default) are confirmed automatically, anything above is asked once.
+
 **Break it live:** the presenter bar's *Break messaging* button makes every send fail. The agent retries with backoff and marks people unreachable after 3 attempts. It then moves on to the next person, and recovers once messaging is restored. Everything lands in the audit trail, which you can export as JSON.
 
 ### Run it

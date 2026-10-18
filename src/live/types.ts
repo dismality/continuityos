@@ -66,7 +66,14 @@ export type Crew = {
   travelMin: number;
   rate: number; // S$/h
   seat: Seat | null;
+  /** true when this person has a slot on today's timetable (derived from slots) */
   rostered?: boolean;
+  /** today's shifts, derived from the timetable */
+  today?: Window[];
+  /** manager turned the AI off for this person: replies are forwarded, nothing is sent automatically */
+  aiPaused?: boolean;
+  /** what the agent learned from this person's replies, kept for next time */
+  notes?: string[];
   status: CrewStatus;
   offer?: Offer;
   askedWindow?: Window; // window we asked them for (full shift, or a gap)
@@ -84,11 +91,13 @@ export type Goal = {
   outlet: string;
   role: string;
   window: Window;
+  slotId?: string;
+  needsCert?: boolean;
   budget: number;
   via: "heuristic" | "llm" | "detected";
   confidence: number;
   assumptions: string[];
-  trigger?: { kind: "sick" | "no_show" | "manager"; crewId?: string; text?: string; at: number };
+  trigger?: { kind: "sick" | "no_show" | "manager" | "open_slot"; crewId?: string; text?: string; at: number };
 };
 
 export type ReplyIntent =
@@ -142,6 +151,32 @@ export type Plan = {
   totalHours: number;
   withinBudget: boolean;
   explanation: string;
+};
+
+export type Assignment = { crewId: string; window: Window; source: "plan" | "ai" | "manager"; extras?: number; extrasNote?: string };
+
+/** One position on today's timetable. Empty `assignments` (or a gap inside the window) means it needs staff. */
+export type Slot = {
+  id: string;
+  role: string;
+  window: Window;
+  needsCert: boolean;
+  assignments: Assignment[];
+  /** people who were on this slot but dropped out today, shown struck through */
+  out?: { crewId: string; reason: string }[];
+};
+
+export type Recovery = {
+  slotId: string;
+  role: string;
+  window: Window;
+  trigger: string;
+  outcome: string;
+  ms: number;
+  taps: number;
+  extra: number;
+  messages: number;
+  at: number;
 };
 
 export type Phase = "lobby" | "checking" | "awaiting_outreach" | "negotiating" | "awaiting_package" | "executing" | "done";
@@ -200,6 +235,10 @@ export type LiveState = {
   nextId: number;
   publishedRoster?: Segment[];
   verified?: { crewId: string; ok: boolean; evidence: string }[];
+  slots: Slot[];
+  /** gaps that appeared while another recovery was running */
+  queue: string[];
+  history: Recovery[];
 };
 
 export type LiveEvent =
@@ -215,6 +254,9 @@ export type LiveEvent =
   | { type: "failure"; on: boolean }
   | { type: "takeover"; crewId: string; on: boolean }
   | { type: "manager_say"; crewId: string; text: string }
+  | { type: "assign"; slotId: string; crewId: string | null }
+  | { type: "offer_to"; crewId: string }
+  | { type: "ai_toggle"; crewId: string; on: boolean }
   | { type: "baseline"; baseline: Partial<Baseline> }
   | { type: "settings"; settings: Partial<Settings> };
 

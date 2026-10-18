@@ -100,8 +100,7 @@ export function parseGoal(text: string): Goal {
   const assumptions: string[] = [];
   const t = text.trim();
   const budgetMatch = t.match(/(?:s\$|\$|sgd\s?)(\d{2,4})|(\d{2,4})\s*(?:dollars|sgd|bucks)|(?:under|below|max|budget(?: of)?)\s*\$?(\d{2,4})/i);
-  const budget = budgetMatch ? Number(budgetMatch[1] ?? budgetMatch[2] ?? budgetMatch[3]) : BUSINESS.defaultBudget;
-  if (!budgetMatch) assumptions.push(`No budget given: using the standing limit of S$${BUSINESS.defaultBudget} for extras`);
+  const budget = budgetMatch ? Number(budgetMatch[1] ?? budgetMatch[2] ?? budgetMatch[3]) : 0; // 0 = no cap
 
   const nameMatch = t.match(/\b([A-Z][a-z]+)(?:'s| is| has| called| can't| cannot| won't| just| texted| messaged| will)\b/);
   const absent = nameMatch && !["Tonight", "Today", "Please", "Need", "Sort", "Can", "The"].includes(nameMatch[1]) ? nameMatch[1] : BUSINESS.absent;

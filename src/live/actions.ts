@@ -8,6 +8,9 @@ export type LiveAction =
   | { action: "failure"; on: boolean }
   | { action: "reset" }
   | { action: "no_show"; crewId: string }
+  | { action: "assign"; slotId: string; crewId: string | null }
+  | { action: "offer_to"; crewId: string }
+  | { action: "ai_toggle"; crewId: string; on: boolean }
   | { action: "takeover"; crewId: string; on: boolean }
   | { action: "say"; crewId: string; text: string }
   | { action: "sim_reply"; crewId: string; text: string }
@@ -37,6 +40,15 @@ export async function applyAction(rt: Runtime, a: LiveAction): Promise<{ ok: boo
       return { ok: true };
     case "no_show":
       rt.dispatch({ type: "no_show", crewId: a.crewId });
+      return { ok: true };
+    case "assign":
+      rt.dispatch({ type: "assign", slotId: a.slotId, crewId: a.crewId ?? null });
+      return { ok: true };
+    case "offer_to":
+      rt.dispatch({ type: "offer_to", crewId: a.crewId });
+      return { ok: true };
+    case "ai_toggle":
+      rt.dispatch({ type: "ai_toggle", crewId: a.crewId, on: !!a.on });
       return { ok: true };
     case "takeover":
       rt.dispatch({ type: "takeover", crewId: a.crewId, on: !!a.on });

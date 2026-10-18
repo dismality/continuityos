@@ -51,7 +51,7 @@ test("a sick text from the rostered worker starts the recovery with no manager i
   assert.equal(h.s.goal?.trigger?.kind, "sick");
   assert.equal(h.s.crew.find((c) => c.id === "aisha")!.status, "absent");
   const excluded = h.s.crew.filter((c) => c.status === "ineligible").map((c) => c.name).sort();
-  assert.deepEqual(excluded, ["Chloe", "Leon", "Marcus", "Raj"]);
+  assert.deepEqual(excluded, ["Ben", "Chloe", "Hana", "Leon", "Marcus", "Raj", "Siti", "Wei"]);
   assert.deepEqual(h.s.crew.filter((c) => c.status === "contacted").map((c) => c.name), ["Daniel", "Farah", "Mei"]);
   assert.equal(h.s.managerTaps, 0);
 });
@@ -110,6 +110,47 @@ test("spend above the rule asks the manager once", () => {
   h.go({ type: "decide", gateId: g.id, approve: true, via: "projector" });
   assert.equal(h.s.phase, "done");
   assert.equal(h.s.managerTaps, 1);
+});
+
+test("the agent writes the cover into the timetable", () => {
+  const h = harness();
+  h.start();
+  h.reply("priya", "yes");
+  h.reply("daniel", "yes I can do the whole shift");
+  const close = h.s.slots.find((x) => x.id === "close-lead")!;
+  assert.ok(close.assignments.length >= 1);
+  assert.ok(close.assignments.every((a) => a.source === "ai"));
+  assert.deepEqual(close.out?.map((o) => o.crewId), ["aisha"]);
+});
+
+test("a manager clearing a slot makes the agent fill it", () => {
+  const h = harness();
+  h.go({ type: "assign", slotId: "service-pm", crewId: null });
+  assert.equal(h.s.goal?.trigger?.kind, "open_slot");
+  assert.equal(h.s.goal?.needsCert, false);
+  assert.ok(h.s.crew.some((c) => c.status === "contacted"));
+});
+
+test("a second dropout during a recovery is queued, then handled", () => {
+  const h = harness();
+  h.start();
+  h.reply("ben", "sorry I'm sick too, can't come in");
+  assert.deepEqual(h.s.queue, ["barista-pm"]);
+  h.reply("daniel", "yes I can do the whole shift");
+  assert.equal(h.s.goal?.slotId, "barista-pm");
+});
+
+test("AI can be switched off per person; manual messages still go out", () => {
+  const h = harness();
+  h.start();
+  h.go({ type: "ai_toggle", crewId: "daniel", on: false });
+  const before = h.s.crew.find((c) => c.id === "daniel")!.thread.length;
+  h.reply("daniel", "yes");
+  const d = h.s.crew.find((c) => c.id === "daniel")!;
+  assert.equal(d.thread.length, before + 1, "no automatic reply");
+  h.go({ type: "manager_say", crewId: "daniel", text: "Hi Daniel, it's the manager" });
+  assert.equal(d.status === "human" || d.aiPaused, true);
+  assert.equal(h.s.crew.find((c) => c.id === "daniel")!.thread.at(-1)!.from, "manager");
 });
 
 test("failed sends retry, then the agent moves to the next person", () => {
