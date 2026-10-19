@@ -14,12 +14,12 @@ export function ManagerApp({ source = "server" }: { source?: Source }) {
   const now = useNow(1000);
   const [goal, setGoal] = useState("Aisha just called, she's sick tonight");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  if (!state) return <div className="dashboard flex min-h-screen items-center justify-center bg-muted/20 text-sm text-muted-foreground">Connecting…</div>;
+  if (!state) return <div className="dashboard beach flex min-h-screen items-center justify-center bg-[#f4efe6] text-sm text-muted-foreground">Connecting…</div>;
   const pending = new Set(state.gates.filter((g) => g.status === "pending").map((g) => g.id));
   const waiting = state.crew.filter((c) => c.status === "human");
   return (
-    <div className="dashboard min-h-screen bg-muted/20 text-foreground">
-      <div className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur-sm">
+    <div className="dashboard beach min-h-screen bg-[#f4efe6] text-foreground">
+      <div className="sticky top-0 z-30 border-b-[1.5px] border-foreground bg-background/95 backdrop-blur-sm">
         <div className="mx-auto flex min-h-16 max-w-lg items-center justify-between gap-3 px-4">
           <div className="flex items-center gap-2.5">
             <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
@@ -70,10 +70,10 @@ export function ManagerApp({ source = "server" }: { source?: Source }) {
         )}
 
         {state.phase === "done" && (
-          <Card className="border-emerald-200 bg-emerald-50/30">
+          <Card className="border-[1.5px] border-foreground bg-background">
             <CardHeader>
               <CardTitle>
-                <h2 className="flex items-center gap-2 text-emerald-900">
+                <h2 className="flex items-center gap-2 text-foreground">
                   <BadgeCheck className="size-5" />
                   Covered in {fmtElapsed((state.finishedAt ?? 0) - (state.startedAt ?? 0))} with {state.managerTaps} taps
                 </h2>
@@ -84,7 +84,7 @@ export function ManagerApp({ source = "server" }: { source?: Source }) {
         )}
 
         {waiting.map((c) => (
-          <Card key={c.id} className="ring-1 ring-amber-300">
+          <Card key={c.id} className="ring-2 ring-foreground">
             <CardHeader>
               <CardTitle>
                 <h2>{c.name} wants to talk to you</h2>
@@ -128,7 +128,7 @@ export function ManagerApp({ source = "server" }: { source?: Source }) {
             const gateId = m.buttons?.[0]?.data.split(":")[1];
             const live = gateId ? pending.has(gateId) : false;
             return (
-              <div key={m.id} className={`rounded-2xl border bg-background p-4 ${live ? "ring-1 ring-amber-300" : ""}`}>
+              <div key={m.id} className={`rounded-2xl border bg-background p-4 ${live ? "ring-2 ring-foreground" : ""}`}>
                 <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                   <Bot className="size-3" />
                   ContinuityOS agent · {clock(m.at)}

@@ -61,12 +61,12 @@ const STATUS: Record<CrewStatus, { label: string; tone: Tone }> = {
 };
 
 const PILL: Record<Tone, string> = {
-  good: "border-emerald-700 bg-emerald-50 text-emerald-900",
-  tent: "border-sky-700 bg-sky-50 text-sky-900",
-  wait: "border-amber-700 bg-amber-50 text-amber-900",
-  bad: "border-red-700 bg-red-50 text-red-800",
-  human: "border-violet-700 bg-violet-50 text-violet-900",
-  idle: "border-foreground/40 bg-background text-muted-foreground",
+  good: "border-foreground bg-foreground text-background",
+  tent: "border-dashed border-foreground bg-background text-foreground",
+  wait: "border-foreground bg-[#ece6da] text-foreground",
+  bad: "border-foreground/50 bg-background text-muted-foreground",
+  human: "border-dotted border-foreground bg-[#ece6da] text-foreground",
+  idle: "border-foreground/30 bg-background text-muted-foreground",
 };
 
 const DAY = { start: 7, end: 23 };
@@ -103,7 +103,7 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
 }
 
 function Btn({ onClick, children, kind = "outline", disabled, type = "button", title }: { onClick?: () => void; children: ReactNode; kind?: "solid" | "outline" | "danger"; disabled?: boolean; type?: "button" | "submit"; title?: string }) {
-  const k = kind === "solid" ? "bg-foreground text-background hover:bg-foreground/85" : kind === "danger" ? "border-red-700 bg-red-50 text-red-800 hover:bg-red-100" : "bg-background hover:bg-muted";
+  const k = kind === "solid" ? "bg-foreground text-background hover:bg-foreground/85" : kind === "danger" ? "border-foreground bg-[#ece6da] text-foreground hover:bg-[#ece6da]" : "bg-background hover:bg-muted";
   return (
     <button type={type} title={title} onClick={onClick} disabled={disabled} className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border-[1.5px] border-foreground px-3 text-xs font-medium transition-colors disabled:opacity-40 ${k}`}>
       {children}
@@ -119,14 +119,14 @@ export function LiveApp({ source }: { source: Source }) {
   const { state, meta, act, offline } = useLive(source);
   const now = useNow(500);
   const [chatWith, setChatWith] = useState<string | null>(null);
-  if (!state) return <div className="dashboard flex min-h-screen items-center justify-center bg-muted/20 text-sm text-muted-foreground">Connecting to the agent…</div>;
+  if (!state) return <div className="dashboard beach flex min-h-screen items-center justify-center bg-[#f4efe6] text-sm text-muted-foreground">Connecting to the agent…</div>;
   const elapsed = state.startedAt ? (state.finishedAt ?? now) - state.startedAt : 0;
   const openChat = (id: string) => {
     setChatWith(id);
     document.getElementById("chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return (
-    <div className="dashboard min-h-screen bg-muted/20 text-foreground">
+    <div className="dashboard beach min-h-screen bg-[#f4efe6] text-foreground">
       <header className="sticky top-0 z-30 border-b-[1.5px] border-foreground bg-background">
         <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-2">
           <div className="flex items-center gap-3">
@@ -190,12 +190,12 @@ export function LiveApp({ source }: { source: Source }) {
 
 function Connection({ state, meta, offline }: { state: LiveState; meta: LiveMeta; offline: boolean }) {
   const [dot, text] = offline
-    ? ["bg-red-500", "Offline"]
+    ? ["bg-foreground", "Offline"]
     : state.mode === "rehearsal"
-      ? ["bg-amber-500", "Demo · simulated phones"]
+      ? ["bg-foreground", "Demo · simulated phones"]
       : meta.bot
-        ? ["bg-emerald-500", `Telegram @${meta.bot}`]
-        : ["bg-amber-500", "Simulated phones"];
+        ? ["bg-foreground", `Telegram @${meta.bot}`]
+        : ["bg-foreground", "Simulated phones"];
   return (
     <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex" title={state.telegram.error}>
       <span className={`size-2 rounded-full ${dot}`} />
@@ -219,28 +219,28 @@ function StatusCard({ state, act, now, meta }: { state: LiveState; act: Act; now
   const last = state.history[state.history.length - 1];
 
   let icon = <BadgeCheck className="size-6" />;
-  let tone = "bg-emerald-50";
+  let tone = "bg-[#ece6da]";
   let title = "Today is fully staffed";
   let sub = `${state.slots.length} shifts on the timetable. The agent is watching for sick calls, no-shows and empty slots.`;
   if (p === "checking" && checking) {
     icon = <Clock3 className="size-6" />;
-    tone = "bg-amber-50";
+    tone = "bg-[#ece6da]";
     title = `Checking on ${checking.name}`;
     const left = Math.max(0, state.settings.noShowWaitSec - Math.floor((now - (checking.lastActivityAt ?? now)) / 1000));
     sub = `${checking.name} hasn't checked in. The agent asked if they're coming and will find cover in ${left}s if there's no reply.`;
   } else if ((p === "negotiating" || p === "awaiting_outreach") && g) {
     icon = <Bot className="size-6" />;
-    tone = "bg-amber-50";
+    tone = "bg-[#ece6da]";
     title = `Finding cover: ${g.role.toLowerCase()} ${fmtWindow(g.window)}`;
     sub = state.plan?.gaps.length ? `Still open: ${state.plan.gaps.map(fmtWindow).join(", ")}. The agent is asking staff now. Nothing needed from you.` : "The agent is asking staff now. Nothing needed from you.";
   } else if (p === "awaiting_package") {
     icon = <AlertTriangle className="size-6" />;
-    tone = "bg-amber-50";
+    tone = "bg-[#ece6da]";
     title = "One decision needed";
     sub = "Cover is found, but the extra cost is above your auto-approve rule.";
   } else if (p === "executing") {
     icon = <Send className="size-6" />;
-    tone = "bg-sky-50";
+    tone = "bg-[#ece6da]";
     title = "Updating the timetable";
     sub = "Confirming the people covering, releasing everyone else, checking every message arrived.";
   } else if (p === "done" && last) {
@@ -333,7 +333,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 function Decision({ gate, act }: { gate: Gate; act: Act }) {
   return (
-    <div className="rounded-xl border-[1.5px] border-amber-700 bg-amber-50 p-4">
+    <div className="rounded-xl border-[1.5px] border-foreground bg-[#ece6da] p-4">
       <p className="text-sm font-semibold">{gate.title}</p>
       <ul className="mt-2 space-y-1 text-xs leading-5">
         {gate.lines.map((l) => (
@@ -357,9 +357,9 @@ function Handover({ c, act }: { c: Crew; act: Act }) {
   const [draft, setDraft] = useState("");
   const last = [...c.thread].reverse().find((m) => m.dir === "in");
   return (
-    <div className="rounded-xl border-[1.5px] border-violet-700 bg-violet-50 p-4">
+    <div className="rounded-xl border-[1.5px] border-foreground bg-[#ece6da] p-4">
       <p className="text-sm font-semibold">{c.name} asked to talk to a person</p>
-      <p className="mt-1 text-xs text-violet-900">&ldquo;{last?.text}&rdquo; · the agent paused this chat and kept going with everyone else.</p>
+      <p className="mt-1 text-xs text-foreground">&ldquo;{last?.text}&rdquo; · the agent paused this chat and kept going with everyone else.</p>
       <form
         className="mt-3 flex flex-wrap gap-2"
         onSubmit={(e) => {
@@ -402,7 +402,7 @@ function Metrics({ state }: { state: LiveState }) {
 
 function Metric({ icon, label, value, hint, accent = false }: { icon: ReactNode; label: string; value: string; hint: string; accent?: boolean }) {
   return (
-    <div className={`rounded-2xl border-[1.5px] border-foreground p-4 ${accent ? "bg-amber-50" : "bg-background"}`}>
+    <div className={`rounded-2xl border-[1.5px] border-foreground p-4 ${accent ? "bg-[#ece6da]" : "bg-background"}`}>
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{label}</span>
         {icon}
@@ -437,11 +437,11 @@ function Timetable({ state, act, onChat }: { state: LiveState; act: Act; onChat:
               <Bot className="size-3" />
               Filled by AI
             </span>
-            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-amber-700 bg-amber-100 px-1.5">
+            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-foreground bg-[#ece6da] px-1.5">
               <Pencil className="size-3" />
               Manager edit
             </span>
-            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-red-700 bg-red-50 px-1.5 text-red-800">Needs staff</span>
+            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-foreground bg-[#ece6da] px-1.5 text-foreground">Needs staff</span>
           </div>
         }
       />
@@ -460,7 +460,7 @@ function Timetable({ state, act, onChat }: { state: LiveState; act: Act; onChat:
               const isActive = active === sl.id;
               return (
                 <div key={sl.id}>
-                  <div className={`flex items-center gap-2 rounded-xl ${isActive ? "bg-amber-50" : ""}`}>
+                  <div className={`flex items-center gap-2 rounded-xl ${isActive ? "bg-[#ece6da]" : ""}`}>
                     <button onClick={() => setEdit(isEdit ? null : sl.id)} className="w-34 shrink-0 rounded-lg px-2 py-1.5 text-left hover:bg-muted" aria-expanded={isEdit}>
                       <span className="block text-xs font-semibold">{sl.role}</span>
                       <span className="block font-mono text-[10px] text-muted-foreground">{fmtWindow(sl.window)}</span>
@@ -469,16 +469,16 @@ function Timetable({ state, act, onChat }: { state: LiveState; act: Act; onChat:
                       <button
                         onClick={() => setEdit(isEdit ? null : sl.id)}
                         aria-label={`Edit ${sl.role} ${fmtWindow(sl.window)}`}
-                        className={`absolute inset-y-1 rounded-md border-[1.5px] border-red-700 bg-[repeating-linear-gradient(135deg,#fee2e2_0_6px,#fff_6px_12px)] ${isActive ? "animate-pulse" : ""}`}
+                        className={`absolute inset-y-1 rounded-md border-[1.5px] border-foreground bg-[repeating-linear-gradient(135deg,#d9d1c3_0_6px,#fbf8f2_6px_12px)] ${isActive ? "animate-pulse" : ""}`}
                         style={{ left: pct(sl.window.start), width: w(sl.window) }}
                       >
-                        <span className="px-2 text-[10px] font-semibold text-red-800">Needs staff</span>
+                        <span className="px-2 text-[10px] font-semibold text-foreground">Needs staff</span>
                       </button>
                       {isActive &&
                         state.plan?.segments.map((g) => (
                           <span
                             key={`t${g.crewId}`}
-                            className="absolute inset-y-1 flex items-center gap-1 overflow-hidden rounded-md border-[1.5px] border-dashed border-sky-700 bg-sky-50 px-2 text-[11px] font-semibold whitespace-nowrap text-sky-900"
+                            className="absolute inset-y-1 flex items-center gap-1 overflow-hidden rounded-md border-[1.5px] border-dashed border-foreground bg-background px-2 text-[11px] font-semibold whitespace-nowrap text-foreground"
                             style={{ left: pct(g.window.start), width: w(g.window) }}
                           >
                             {name(g.crewId)} <span className="font-normal opacity-70">pencilled in</span>
@@ -489,7 +489,7 @@ function Timetable({ state, act, onChat }: { state: LiveState; act: Act; onChat:
                           key={a.crewId + a.window.start}
                           onClick={() => onChat(a.crewId)}
                           title={`Open chat with ${name(a.crewId)}`}
-                          className={`absolute inset-y-1 flex items-center gap-1 overflow-hidden rounded-md border-[1.5px] px-2 text-[11px] font-semibold whitespace-nowrap ${a.source === "ai" ? "border-foreground bg-foreground text-background" : a.source === "manager" ? "border-amber-700 bg-amber-100" : "border-foreground bg-background"}`}
+                          className={`absolute inset-y-1 flex items-center gap-1 overflow-hidden rounded-md border-[1.5px] px-2 text-[11px] font-semibold whitespace-nowrap ${a.source === "ai" ? "border-foreground bg-foreground text-background" : a.source === "manager" ? "border-foreground bg-[#ece6da]" : "border-foreground bg-background"}`}
                           style={{ left: pct(a.window.start), width: w(a.window) }}
                         >
                           {a.source === "ai" && <Bot className="size-3 shrink-0" />}
@@ -503,7 +503,7 @@ function Timetable({ state, act, onChat }: { state: LiveState; act: Act; onChat:
                   {sl.out?.length ? (
                     <p className="mt-0.5 ml-36 text-[10px] text-muted-foreground">
                       {sl.out.map((o) => (
-                        <span key={o.crewId} className="mr-2 line-through decoration-red-600">
+                        <span key={o.crewId} className="mr-2 line-through decoration-foreground">
                           {name(o.crewId)} ({o.reason})
                         </span>
                       ))}
@@ -554,7 +554,7 @@ function SlotEditor({ sl, state, act, onClose }: { sl: Slot; state: LiveState; a
         </Btn>
         <Btn onClick={onClose}>Cancel</Btn>
       </div>
-      {rule && <p className="mt-2 text-[11px] text-amber-800">⚠ This breaks a rule ({rule}). You can still save it; it&apos;s logged as a manager override.</p>}
+      {rule && <p className="mt-2 text-[11px] text-foreground">⚠ This breaks a rule ({rule}). You can still save it; it&apos;s logged as a manager override.</p>}
       {!pick && <p className="mt-2 text-[11px] text-muted-foreground">{busy ? "Another recovery is running, so this one will be queued and handled right after." : "The agent will treat this as an empty shift and start finding cover straight away."}</p>}
       {sl.needsCert && <p className="mt-1 text-[11px] text-muted-foreground">This shift needs a food-safety certified lead.</p>}
     </div>
@@ -584,7 +584,7 @@ function StaffChat({ state, act, selected, onSelect, now }: { state: LiveState; 
             const last = [...x.thread].reverse().find((m) => m.tag !== "welcome");
             const fresh = last && now - last.at < 4000;
             return (
-              <button key={x.id} onClick={() => onSelect(x.id)} className={`mb-1 flex w-full items-center gap-2.5 rounded-lg p-2 text-left ${active ? "bg-foreground text-background" : fresh ? "bg-amber-50" : "hover:bg-muted"}`}>
+              <button key={x.id} onClick={() => onSelect(x.id)} className={`mb-1 flex w-full items-center gap-2.5 rounded-lg p-2 text-left ${active ? "bg-foreground text-background" : fresh ? "bg-[#ece6da]" : "hover:bg-muted"}`}>
                 <span className={`flex size-8 shrink-0 items-center justify-center rounded-full border-[1.5px] text-[10px] font-semibold ${active ? "border-background" : "border-foreground"}`}>{x.name.slice(0, 2).toUpperCase()}</span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 text-xs font-semibold">
@@ -635,7 +635,7 @@ function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }
           <button
             onClick={() => act({ action: "ai_toggle", crewId: c.id, on: !!c.aiPaused })}
             aria-pressed={!c.aiPaused}
-            className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg border-[1.5px] px-2.5 text-[11px] font-medium ${c.aiPaused ? "border-violet-700 bg-violet-50 text-violet-900" : "border-foreground bg-foreground text-background"}`}
+            className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg border-[1.5px] px-2.5 text-[11px] font-medium ${c.aiPaused ? "border-foreground bg-[#ece6da] text-foreground" : "border-foreground bg-foreground text-background"}`}
           >
             {c.aiPaused ? <BotOff className="size-3.5" /> : <Bot className="size-3.5" />}
             {c.aiPaused ? "AI off: you reply by hand" : "AI replies automatically"}
@@ -704,7 +704,7 @@ function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }
             </form>
           </div>
         )}
-        {err && <p className="text-[11px] text-red-700">{err}</p>}
+        {err && <p className="text-[11px] text-foreground">{err}</p>}
       </div>
     </div>
   );
@@ -717,7 +717,7 @@ function Bubble({ m, crew, act }: { m: Msg; crew: Crew; act: Act }) {
   const canTap = !incoming && m.buttons && m.id === lastOut?.id && crew.seat?.kind !== "telegram" && !["confirmed", "released", "declined", "human", "absent"].includes(crew.status);
   const tick: Record<string, string> = { queued: "sending…", sent: "delivered ✓", retrying: `retrying (${m.attempts})`, abandoned: "failed", failed: "failed" };
   return (
-    <div className={`max-w-[85%] rounded-xl border-[1.5px] px-3 py-2 ${incoming ? "self-start border-foreground bg-background" : manual ? "self-end border-violet-700 bg-violet-50" : "self-end border-foreground bg-foreground text-background"}`}>
+    <div className={`max-w-[85%] rounded-xl border-[1.5px] px-3 py-2 ${incoming ? "self-start border-foreground bg-background" : manual ? "self-end border-foreground bg-[#ece6da]" : "self-end border-foreground bg-foreground text-background"}`}>
       <p className="flex flex-wrap items-center gap-1 text-[10px] opacity-70">
         {incoming ? crew.name : manual ? "Manager · manual" : "AI · automatic"} · {clock(m.at)}
         {!incoming && ` · ${tick[m.status ?? "queued"]}`}
@@ -914,7 +914,7 @@ function EvidenceLog({ state }: { state: LiveState }) {
               <li key={e.id} className="grid grid-cols-[4.5rem_1fr] gap-2 text-xs">
                 <span className="font-mono text-[10px] text-muted-foreground">{clock(e.at)}</span>
                 <span>
-                  <span className={e.status === "fail" ? "text-red-800" : e.status === "warn" ? "text-amber-800" : ""}>{e.action}</span>
+                  <span className={e.status === "fail" ? "text-foreground" : e.status === "warn" ? "text-foreground" : ""}>{e.action}</span>
                   {e.evidence && <span className="block font-mono text-[10px] break-words text-muted-foreground">{e.evidence}</span>}
                 </span>
               </li>
@@ -1116,7 +1116,7 @@ function HowItWorks({ state }: { state: LiveState }) {
         <Label>What the agent does, live</Label>
         <ol className="mt-3">
           {state.steps.map((s, i) => {
-            const dot = s.status === "done" ? "bg-foreground text-background border-foreground" : s.status === "active" ? "animate-pulse bg-amber-100 border-foreground" : "bg-background border-foreground/30 text-muted-foreground";
+            const dot = s.status === "done" ? "bg-foreground text-background border-foreground" : s.status === "active" ? "animate-pulse bg-[#ece6da] border-foreground" : "bg-background border-foreground/30 text-muted-foreground";
             return (
               <li key={s.id} className="flex gap-3">
                 <div className="flex flex-col items-center">

@@ -1,3 +1,15 @@
+/* Beach white and black: warm off-white surfaces, black ink and outlines. */
+.beach {
+  --background: #fbf8f2;
+  --card: #fbf8f2;
+  --muted: #ece6da;
+  --foreground: #111111;
+  --muted-foreground: #5f5a52;
+  --border: #111111;
+  --primary: #111111;
+  --primary-foreground: #fbf8f2;
+}
+
 /* Live Mode motion for the negotiation map. Everything else uses the dashboard's Tailwind + shadcn styles. */
 .live-edge {
   stroke-dasharray: 6 8;
