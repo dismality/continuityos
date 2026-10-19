@@ -14,11 +14,11 @@ export function ManagerApp({ source = "server" }: { source?: Source }) {
   const now = useNow(1000);
   const [goal, setGoal] = useState("Aisha just called, she's sick tonight");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  if (!state) return <div className="dashboard beach flex min-h-screen items-center justify-center bg-[#f4efe6] text-sm text-muted-foreground">Connecting…</div>;
+  if (!state) return <div className="dashboard beach flex min-h-screen items-center justify-center bg-[#ce9771] text-sm text-muted-foreground">Connecting…</div>;
   const pending = new Set(state.gates.filter((g) => g.status === "pending").map((g) => g.id));
   const waiting = state.crew.filter((c) => c.status === "human");
   return (
-    <div className="dashboard beach min-h-screen bg-[#f4efe6] text-foreground">
+    <div className="dashboard beach min-h-screen bg-[#ce9771] text-foreground">
       <div className="sticky top-0 z-30 border-b-[1.5px] border-foreground bg-background/95 backdrop-blur-sm">
         <div className="mx-auto flex min-h-16 max-w-lg items-center justify-between gap-3 px-4">
           <div className="flex items-center gap-2.5">

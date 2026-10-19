@@ -119,14 +119,14 @@ export function LiveApp({ source }: { source: Source }) {
   const { state, meta, act, offline } = useLive(source);
   const now = useNow(500);
   const [chatWith, setChatWith] = useState<string | null>(null);
-  if (!state) return <div className="dashboard beach flex min-h-screen items-center justify-center bg-[#f4efe6] text-sm text-muted-foreground">Connecting to the agent…</div>;
+  if (!state) return <div className="dashboard beach flex min-h-screen items-center justify-center bg-[#ce9771] text-sm text-muted-foreground">Connecting to the agent…</div>;
   const elapsed = state.startedAt ? (state.finishedAt ?? now) - state.startedAt : 0;
   const openChat = (id: string) => {
     setChatWith(id);
     document.getElementById("chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return (
-    <div className="dashboard beach min-h-screen bg-[#f4efe6] text-foreground">
+    <div className="dashboard beach min-h-screen bg-[#ce9771] text-foreground">
       <header className="sticky top-0 z-30 border-b-[1.5px] border-foreground bg-background">
         <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-2">
           <div className="flex items-center gap-3">
