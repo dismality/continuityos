@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { integrations } from "@/lib/env";
@@ -30,6 +31,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   await connection();
   const pathname = (await headers()).get("x-shiftpilot-pathname");
   const databaseFreeDemo = pathname === "/demo" || pathname?.startsWith("/live") === true;
+  // Without a database the ShiftPilot dashboard can't run, so send people to the ContinuityOS live demo.
+  if (!integrations.database && pathname === "/") redirect("/live");
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-muted/30">
