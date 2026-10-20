@@ -610,7 +610,9 @@ function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const msgs = c.thread.filter((m) => m.tag !== "welcome");
-  useEffect(() => box.current?.scrollTo({ top: box.current.scrollHeight }), [msgs.length, c.id]);
+  useEffect(() => {
+    box.current?.scrollTo({ top: box.current.scrollHeight });
+  }, [msgs.length, c.id]);
   const sim = c.seat?.kind !== "telegram";
   const incident = state.goal && !["lobby", "done", "checking"].includes(state.phase);
   const canOffer = incident && !c.contactedAt && !whyNot(c, state.goal!) && c.status !== "absent";
