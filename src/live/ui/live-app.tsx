@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { LiveAction } from "../actions.ts";
+import { whyNot } from "../planner.ts";
+import { qrPath } from "../qr.ts";
+import { BUSINESS, fmtHour, fmtWindow, overlaps } from "../scenario.ts";
+import type { AuditEntry, Crew, CrewStatus, Gate, LiveState, Msg, Slot } from "../types.ts";
+import { ActivityFeed, CommandBar, Donut, Drawer, OutreachBeams, TEAL, Ticker, Toaster, useMedia, type Cmd } from "./fx.tsx";
 import {
   Activity,
   AlertTriangle,
@@ -9,9 +15,10 @@ import {
   BotOff,
   Brain,
   Check,
-  ChevronDown,
+  Checks,
   CircleDollarSign,
   Clock3,
+  Command,
   Download,
   FileCheck2,
   FileSpreadsheet,
@@ -29,18 +36,14 @@ import {
   TrendingUp,
   Users,
   UserX,
+  Waves,
   X,
   Zap,
-} from "lucide-react";
-import type { LiveAction } from "../actions.ts";
-import { rank, whyNot } from "../planner.ts";
-import { qrPath } from "../qr.ts";
-import { BUSINESS, fmtHour, fmtWindow, overlaps } from "../scenario.ts";
-import type { AuditEntry, Crew, CrewStatus, Gate, LiveState, Msg, Slot } from "../types.ts";
+} from "./icons.tsx";
 import { clock, fmtElapsed, useLive, useNow, type LiveMeta, type Source } from "./use-live.ts";
 
 type Act = (a: LiveAction) => Promise<{ ok: boolean; error?: string }>;
-type Tone = "good" | "tent" | "wait" | "bad" | "human" | "idle";
+type Tone = "good" | "ai" | "tent" | "wait" | "bad" | "human" | "idle";
 
 const STATUS: Record<CrewStatus, { label: string; tone: Tone }> = {
   rostered: { label: "Working today", tone: "good" },
@@ -56,13 +59,14 @@ const STATUS: Record<CrewStatus, { label: string; tone: Tone }> = {
   no_response: { label: "No reply", tone: "bad" },
   unreachable: { label: "Unreachable", tone: "bad" },
   human: { label: "Manager handling", tone: "human" },
-  confirmed: { label: "Confirmed", tone: "good" },
+  confirmed: { label: "Confirmed", tone: "ai" },
   released: { label: "Not needed", tone: "idle" },
 };
 
 const PILL: Record<Tone, string> = {
   good: "border-foreground bg-foreground text-background",
-  tent: "border-dashed border-foreground bg-background text-foreground",
+  ai: "border-[#1f5f5b] bg-[#1f5f5b] text-white",
+  tent: "border-dashed border-[#1f5f5b] bg-background text-[#1f5f5b]",
   wait: "border-foreground bg-[#ece6da] text-foreground",
   bad: "border-foreground/50 bg-background text-muted-foreground",
   human: "border-dotted border-foreground bg-[#ece6da] text-foreground",
@@ -72,12 +76,15 @@ const PILL: Record<Tone, string> = {
 const DAY = { start: 7, end: 23 };
 const hrs = (w: { start: number; end: number }) => w.end - w.start;
 const money = (n: number) => `S$${n.toFixed(n % 1 ? 2 : 0)}`;
+const initials = (n: string) => n.slice(0, 2).toUpperCase();
+const SHADOW = "shadow-[4px_4px_0_0_#111]";
+const SICK = "sorry, I'm sick, can't come in today";
 
-// ───────────────────────────────── building blocks (black outlines)
+// ───────────────────────────────── building blocks: soft neo-brutalist cards
 
-function Box({ className = "", children, id }: { className?: string; children: ReactNode; id?: string }) {
+function Box({ className = "", children, id, delay = 0 }: { className?: string; children: ReactNode; id?: string; delay?: number }) {
   return (
-    <section id={id} className={`scroll-mt-20 rounded-2xl border-[1.5px] border-foreground bg-background ${className}`}>
+    <section id={id} style={{ "--d": `${delay}ms` } as CSSProperties} className={`lv-rise scroll-mt-24 rounded-2xl border-[1.5px] border-foreground bg-background ${SHADOW} ${className}`}>
       {children}
     </section>
   );
@@ -87,11 +94,11 @@ function Head({ icon, title, sub, right }: { icon: ReactNode; title: string; sub
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 border-b-[1.5px] border-foreground px-5 py-4">
       <div className="min-w-0">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          {icon}
+        <h2 className="font-display flex items-center gap-2 text-lg font-semibold">
+          <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#ece6da]">{icon}</span>
           {title}
         </h2>
-        {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+        {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
       </div>
       {right}
     </div>
@@ -99,13 +106,20 @@ function Head({ icon, title, sub, right }: { icon: ReactNode; title: string; sub
 }
 
 function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${PILL[tone]}`}>{children}</span>;
+  return <span className={`inline-flex items-center gap-1 rounded-full border-[1.5px] px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${PILL[tone]}`}>{children}</span>;
 }
 
-function Btn({ onClick, children, kind = "outline", disabled, type = "button", title }: { onClick?: () => void; children: ReactNode; kind?: "solid" | "outline" | "danger"; disabled?: boolean; type?: "button" | "submit"; title?: string }) {
-  const k = kind === "solid" ? "bg-foreground text-background hover:bg-foreground/85" : kind === "danger" ? "border-foreground bg-[#ece6da] text-foreground hover:bg-[#ece6da]" : "bg-background hover:bg-muted";
+type BtnKind = "solid" | "ai" | "outline" | "danger";
+function Btn({ onClick, children, kind = "outline", disabled, type = "button", title, className = "" }: { onClick?: () => void; children: ReactNode; kind?: BtnKind; disabled?: boolean; type?: "button" | "submit"; title?: string; className?: string }) {
+  const k = { solid: "bg-foreground text-background", ai: "bg-[#1f5f5b] text-white", danger: "bg-[#ece6da] text-foreground", outline: "bg-background hover:bg-[#f4efe6]" }[kind];
   return (
-    <button type={type} title={title} onClick={onClick} disabled={disabled} className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border-[1.5px] border-foreground px-3 text-xs font-medium transition-colors disabled:opacity-40 ${k}`}>
+    <button
+      type={type}
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border-[1.5px] border-foreground px-3 text-xs font-semibold shadow-[2px_2px_0_0_#111] transition-all enabled:hover:-translate-y-px enabled:hover:shadow-[3px_3px_0_0_#111] enabled:active:translate-x-[2px] enabled:active:translate-y-[2px] enabled:active:shadow-none disabled:opacity-40 disabled:shadow-none ${k} ${className}`}
+    >
       {children}
     </button>
   );
@@ -113,34 +127,81 @@ function Btn({ onClick, children, kind = "outline", disabled, type = "button", t
 
 const Label = ({ children }: { children: ReactNode }) => <p className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">{children}</p>;
 
+function Avatar({ name, size = "size-8", tone = "plain", className = "" }: { name: string; size?: string; tone?: "plain" | "ai" | "dark"; className?: string }) {
+  const t = tone === "ai" ? "bg-[#1f5f5b] text-white border-foreground" : tone === "dark" ? "bg-foreground text-background border-foreground" : "bg-[#ece6da] text-foreground border-foreground";
+  return <span className={`flex shrink-0 items-center justify-center rounded-full border-[1.5px] text-[10px] font-bold ${size} ${t} ${className}`}>{initials(name)}</span>;
+}
+
 // ───────────────────────────────── page
 
 export function LiveApp({ source }: { source: Source }) {
   const { state, meta, act, offline } = useLive(source);
   const now = useNow(500);
   const [chatWith, setChatWith] = useState<string | null>(null);
-  if (!state) return <div className="dashboard beach flex min-h-screen items-center justify-center bg-[#ce9771] text-sm text-muted-foreground">Connecting to the agent…</div>;
-  const elapsed = state.startedAt ? (state.finishedAt ?? now) - state.startedAt : 0;
-  const openChat = (id: string) => {
+  const [chatNonce, setChatNonce] = useState(0);
+  const [cmdOpen, setCmdOpen] = useState(false);
+
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
+
+  const openChat = useCallback((id: string) => {
     setChatWith(id);
+    setChatNonce((n) => n + 1);
     document.getElementById("chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  }, []);
+
+  const commands = useMemo<Cmd[]>(() => {
+    if (!state) return [];
+    const go = (id: string) => () => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const working = state.crew.filter((c) => c.today?.length && c.status !== "absent" && c.status !== "checking");
+    const out: Cmd[] = [];
+    for (const c of working) {
+      if (c.seat?.kind !== "telegram") out.push({ id: `sick-${c.id}`, group: "Make something go wrong", label: `${c.name} texts in sick`, hint: fmtWindow(c.today![0]), run: () => void act({ action: "sim_reply", crewId: c.id, text: c.id === "aisha" ? c.persona[0] : SICK }) });
+      out.push({ id: `ns-${c.id}`, group: "Make something go wrong", label: `${c.name} doesn't show up`, hint: fmtWindow(c.today![0]), run: () => void act({ action: "no_show", crewId: c.id }) });
+    }
+    for (const sl of state.slots) if (sl.assignments.length) out.push({ id: `clr-${sl.id}`, group: "Timetable", label: `Clear ${sl.role.toLowerCase()} ${fmtWindow(sl.window)}`, hint: "agent refills it", run: () => void act({ action: "assign", slotId: sl.id, crewId: null }) });
+    for (const c of state.crew) out.push({ id: `chat-${c.id}`, group: "Staff chat", label: `Open chat with ${c.name}`, hint: STATUS[c.status].label, run: () => openChat(c.id) });
+    for (const [id, l] of [
+      ["status", "Status"],
+      ["timetable", "Timetable"],
+      ["chat", "Staff chat"],
+      ["insights", "Insights"],
+      ["impact", "Impact"],
+      ["timesheet", "Timesheet"],
+    ])
+      out.push({ id: `go-${id}`, group: "Go to", label: l, run: go(id) });
+    out.push({ id: "fail", group: "Demo", label: state.failureInjected ? "Restore messaging" : "Break messaging", run: () => void act({ action: "failure", on: !state.failureInjected }) });
+    out.push({ id: "auto", group: "Demo", label: meta.autoplay ? "Simulated staff wait for me" : "Simulated staff reply on their own", run: () => void act({ action: "autoplay", on: !meta.autoplay }) });
+    out.push({ id: "reset", group: "Demo", label: "Reset the day", run: () => void act({ action: "reset" }) });
+    return out;
+  }, [state, meta.autoplay, act, openChat]);
+
+  if (!state) return <div className="dashboard beach beach-ground flex min-h-screen items-center justify-center text-sm text-foreground">Connecting to the agent…</div>;
+  const elapsed = state.startedAt ? (state.finishedAt ?? now) - state.startedAt : 0;
   return (
-    <div className="dashboard beach min-h-screen bg-[#ce9771] text-foreground">
-      <header className="sticky top-0 z-30 border-b-[1.5px] border-foreground bg-background">
+    <div className="dashboard beach beach-ground min-h-screen text-foreground">
+      <header className="sticky top-0 z-30 border-b-[1.5px] border-foreground bg-background/95 backdrop-blur-sm">
         <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-2">
           <div className="flex items-center gap-3">
-            <span className="flex size-9 items-center justify-center rounded-xl bg-foreground text-background">
-              <ShieldCheck className="size-5" />
+            <span className="flex size-10 items-center justify-center rounded-xl border-[1.5px] border-foreground bg-foreground text-background shadow-[2px_2px_0_0_#1f5f5b]">
+              <Waves className="size-5" />
             </span>
             <div>
-              <p className="text-base leading-tight font-semibold tracking-tight">ContinuityOS</p>
+              <p className="font-display text-lg leading-tight font-bold">ContinuityOS</p>
               <p className="text-xs text-muted-foreground">
                 {BUSINESS.name} · {BUSINESS.outlet} outlet · today
               </p>
             </div>
           </div>
-          <nav className="hidden items-center gap-1 text-xs md:flex">
+          <nav className="hidden items-center gap-1 text-xs lg:flex">
             {[
               ["status", "Status"],
               ["timetable", "Timetable"],
@@ -148,15 +209,20 @@ export function LiveApp({ source }: { source: Source }) {
               ["insights", "Insights"],
               ["timesheet", "Timesheet"],
             ].map(([id, l]) => (
-              <a key={id} href={`#${id}`} className="rounded-md px-2.5 py-1.5 font-medium hover:bg-muted">
+              <a key={id} href={`#${id}`} className="rounded-md px-2.5 py-1.5 font-medium hover:bg-[#ece6da]">
                 {l}
               </a>
             ))}
           </nav>
           <div className="flex items-center gap-2">
+            <button onClick={() => setCmdOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border-[1.5px] border-foreground bg-background px-2.5 text-xs text-muted-foreground shadow-[2px_2px_0_0_#111] transition-all hover:-translate-y-px active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">
+              <Command className="size-3.5 text-foreground" />
+              <span className="hidden sm:inline">Search actions</span>
+              <kbd className="rounded border border-foreground/30 px-1 font-mono text-[10px]">Ctrl K</kbd>
+            </button>
             <Connection state={state} meta={meta} offline={offline} />
             {state.startedAt && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border-[1.5px] border-foreground px-2.5 py-1 font-mono text-sm tabular-nums">
+              <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border-[1.5px] border-foreground bg-background px-2.5 font-mono text-sm tabular-nums">
                 <Clock3 className="size-3.5" />
                 {fmtElapsed(elapsed)}
               </span>
@@ -165,13 +231,13 @@ export function LiveApp({ source }: { source: Source }) {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl items-start gap-6 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
-        <main className="min-w-0 space-y-6">
+      <div className="mx-auto grid max-w-7xl items-start gap-7 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
+        <main className="min-w-0 space-y-7">
           <StatusCard state={state} act={act} now={now} meta={meta} />
           <Metrics state={state} />
-          <Timetable state={state} act={act} onChat={openChat} />
-          <StaffChat state={state} act={act} selected={chatWith} onSelect={setChatWith} now={now} />
-          <div id="insights" className="grid scroll-mt-20 gap-6 md:grid-cols-2">
+          <Timetable state={state} act={act} onChat={openChat} now={now} />
+          <StaffChat state={state} act={act} selected={chatWith} nonce={chatNonce} onSelect={openChat} now={now} />
+          <div id="insights" className="grid scroll-mt-24 gap-7 md:grid-cols-6">
             <RulesCard state={state} act={act} />
             <JoinCard state={state} meta={meta} source={source} />
             <Fairness state={state} />
@@ -184,21 +250,17 @@ export function LiveApp({ source }: { source: Source }) {
         </main>
         <HowItWorks state={state} />
       </div>
+      <CommandBar open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
+      <Toaster state={state} />
     </div>
   );
 }
 
 function Connection({ state, meta, offline }: { state: LiveState; meta: LiveMeta; offline: boolean }) {
-  const [dot, text] = offline
-    ? ["bg-foreground", "Offline"]
-    : state.mode === "rehearsal"
-      ? ["bg-foreground", "Demo · simulated phones"]
-      : meta.bot
-        ? ["bg-foreground", `Telegram @${meta.bot}`]
-        : ["bg-foreground", "Simulated phones"];
+  const text = offline ? "Offline" : state.mode === "rehearsal" ? "Demo · simulated phones" : meta.bot ? `Telegram @${meta.bot}` : "Simulated phones";
   return (
-    <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex" title={state.telegram.error}>
-      <span className={`size-2 rounded-full ${dot}`} />
+    <span className="hidden items-center gap-1.5 text-xs text-muted-foreground xl:inline-flex" title={state.telegram.error}>
+      <span className={`size-2 rounded-full ${offline ? "bg-foreground" : "lv-blink bg-[#1f5f5b]"}`} />
       {text}
     </span>
   );
@@ -217,6 +279,7 @@ function StatusCard({ state, act, now, meta }: { state: LiveState; act: Act; now
   const realAisha = aisha.seat?.kind === "telegram";
   const checking = state.crew.find((c) => c.status === "checking");
   const last = state.history[state.history.length - 1];
+  const live = p === "negotiating" || p === "awaiting_package" || p === "executing" || p === "awaiting_outreach";
 
   let icon = <BadgeCheck className="size-6" />;
   let tone = "bg-[#ece6da]";
@@ -224,48 +287,70 @@ function StatusCard({ state, act, now, meta }: { state: LiveState; act: Act; now
   let sub = `${state.slots.length} shifts on the timetable. The agent is watching for sick calls, no-shows and empty slots.`;
   if (p === "checking" && checking) {
     icon = <Clock3 className="size-6" />;
-    tone = "bg-[#ece6da]";
     title = `Checking on ${checking.name}`;
     const left = Math.max(0, state.settings.noShowWaitSec - Math.floor((now - (checking.lastActivityAt ?? now)) / 1000));
     sub = `${checking.name} hasn't checked in. The agent asked if they're coming and will find cover in ${left}s if there's no reply.`;
   } else if ((p === "negotiating" || p === "awaiting_outreach") && g) {
     icon = <Bot className="size-6" />;
-    tone = "bg-[#ece6da]";
+    tone = "bg-[#d7e6e3]";
     title = `Finding cover: ${g.role.toLowerCase()} ${fmtWindow(g.window)}`;
     sub = state.plan?.gaps.length ? `Still open: ${state.plan.gaps.map(fmtWindow).join(", ")}. The agent is asking staff now. Nothing needed from you.` : "The agent is asking staff now. Nothing needed from you.";
   } else if (p === "awaiting_package") {
     icon = <AlertTriangle className="size-6" />;
-    tone = "bg-[#ece6da]";
     title = "One decision needed";
     sub = "Cover is found, but the extra cost is above your auto-approve rule.";
   } else if (p === "executing") {
     icon = <Send className="size-6" />;
-    tone = "bg-[#ece6da]";
+    tone = "bg-[#d7e6e3]";
     title = "Updating the timetable";
     sub = "Confirming the people covering, releasing everyone else, checking every message arrived.";
   } else if (p === "done" && last) {
+    tone = "bg-[#d7e6e3]";
     title = "Covered. Nothing needed from you.";
     sub = `${last.trigger}. ${last.outcome}.`;
   }
 
+  const nodes = live
+    ? state.crew
+        .filter((c) => c.contactedAt)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          label: `${STATUS[c.status].label}${c.askedWindow ? ` · asked ${fmtWindow(c.askedWindow)}` : ""}`,
+          kind: (["confirmed", "accepted"].includes(c.status) ? "yes" : ["declined", "no_response", "unreachable", "released"].includes(c.status) ? "no" : c.status === "human" ? "person" : "asking") as "yes" | "no" | "person" | "asking",
+        }))
+    : [];
+
   return (
     <Box className="overflow-hidden" id="status">
-      <div className={`flex items-start gap-4 border-b-[1.5px] border-foreground p-5 ${tone}`}>
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border-[1.5px] border-foreground bg-background">{icon}</span>
+      <div className={`flex items-start gap-4 border-b-[1.5px] border-foreground p-5 transition-colors duration-500 ${tone}`}>
+        <span className={`flex size-12 shrink-0 items-center justify-center rounded-xl border-[1.5px] border-foreground shadow-[2px_2px_0_0_#111] ${live || p === "done" ? "bg-[#1f5f5b] text-white" : "bg-background"}`}>{icon}</span>
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
+          <h1 key={title} className="font-display lv-pop text-[1.75rem] leading-tight font-bold text-balance">
+            {title}
+          </h1>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">{sub}</p>
         </div>
       </div>
       <div className="space-y-4 p-5">
-        {(p === "negotiating" || p === "awaiting_package" || p === "executing") && (
+        {live && (
           <div>
             <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
               <span>Shift covered</span>
-              <span className="font-mono tabular-nums">{coverage}%</span>
+              <span className="font-mono">
+                <Ticker value={coverage} />%
+              </span>
             </div>
-            <div className="h-3 overflow-hidden rounded-full border-[1.5px] border-foreground bg-background">
-              <div className="h-full bg-foreground transition-all duration-500" style={{ width: `${coverage}%` }} />
+            <div className="h-3.5 overflow-hidden rounded-full border-[1.5px] border-foreground bg-background">
+              <div className="h-full bg-[#1f5f5b] transition-all duration-700" style={{ width: `${coverage}%` }} />
+            </div>
+          </div>
+        )}
+        {nodes.length > 0 && (
+          <div>
+            <Label>Who the agent is talking to right now</Label>
+            <div className="mt-2">
+              <OutreachBeams nodes={nodes} />
             </div>
           </div>
         )}
@@ -275,16 +360,16 @@ function StatusCard({ state, act, now, meta }: { state: LiveState; act: Act; now
           <Handover key={c.id} c={c} act={act} />
         ))}
         {(p === "lobby" || p === "done") && close.assignments.some((a) => a.crewId === "aisha") && (
-          <div className="rounded-xl border-[1.5px] border-dashed border-foreground/60 p-4">
+          <div className="rounded-xl border-[1.5px] border-dashed border-foreground/60 bg-[#f4efe6] p-4">
             <Label>Try it</Label>
             <p className="mt-1 text-sm">
               {realAisha
                 ? `${aisha.seat?.kind === "telegram" ? aisha.seat.handle : ""} is playing Aisha. Ask them to text the bot that they can't come in, or simulate a no-show.`
-                : "Make something go wrong. The manager doesn't touch anything after this. You can also clear any shift in the timetable."}
+                : "Make something go wrong. The manager doesn't touch anything after this. You can also clear any shift in the timetable, or press Ctrl K."}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {!realAisha && (
-                <Btn kind="solid" onClick={() => act({ action: "sim_reply", crewId: "aisha", text: aisha.persona[0] })}>
+                <Btn kind="solid" className="lv-shimmer" onClick={() => act({ action: "sim_reply", crewId: "aisha", text: aisha.persona[0] })}>
                   <Smartphone className="size-3.5" />
                   Aisha texts in sick
                 </Btn>
@@ -315,17 +400,22 @@ function Outcome({ state }: { state: LiveState }) {
       {msg && (
         <div>
           <Label>The only message the manager got</Label>
-          <div className="mt-1.5 rounded-xl border-[1.5px] border-foreground bg-muted/40 p-3 text-sm leading-6 whitespace-pre-wrap">{msg.text}</div>
+          <div className="lv-pop mt-1.5 max-w-xl rounded-2xl rounded-tl-md border-[1.5px] border-foreground bg-white p-3 text-sm leading-6 whitespace-pre-wrap shadow-[2px_2px_0_0_#111]">
+            {msg.text}
+            <span className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+              {clock(msg.at)} <Checks className="size-3.5 text-[#1f5f5b]" />
+            </span>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
+function Stat({ value, label, children }: { value?: string; label: string; children?: ReactNode }) {
   return (
-    <div className="rounded-xl border-[1.5px] border-foreground p-3">
-      <p className="font-mono text-xl font-semibold tabular-nums">{value}</p>
+    <div className="rounded-xl border-[1.5px] border-foreground bg-background p-3 shadow-[2px_2px_0_0_#111]">
+      <p className="font-display text-2xl font-bold tabular-nums">{children ?? value}</p>
       <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{label}</p>
     </div>
   );
@@ -333,7 +423,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 function Decision({ gate, act }: { gate: Gate; act: Act }) {
   return (
-    <div className="rounded-xl border-[1.5px] border-foreground bg-[#ece6da] p-4">
+    <div className="lv-pop rounded-xl border-[1.5px] border-foreground bg-[#ece6da] p-4 shadow-[2px_2px_0_0_#111]">
       <p className="text-sm font-semibold">{gate.title}</p>
       <ul className="mt-2 space-y-1 text-xs leading-5">
         {gate.lines.map((l) => (
@@ -357,7 +447,7 @@ function Handover({ c, act }: { c: Crew; act: Act }) {
   const [draft, setDraft] = useState("");
   const last = [...c.thread].reverse().find((m) => m.dir === "in");
   return (
-    <div className="rounded-xl border-[1.5px] border-foreground bg-[#ece6da] p-4">
+    <div className="lv-pop rounded-xl border-[1.5px] border-foreground bg-[#ece6da] p-4 shadow-[2px_2px_0_0_#111]">
       <p className="text-sm font-semibold">{c.name} asked to talk to a person</p>
       <p className="mt-1 text-xs text-foreground">&ldquo;{last?.text}&rdquo; · the agent paused this chat and kept going with everyone else.</p>
       <form
@@ -382,40 +472,79 @@ function Handover({ c, act }: { c: Crew; act: Act }) {
   );
 }
 
-// ───────────────────────────────── metrics
+// ───────────────────────────────── bento metrics
 
 function Metrics({ state }: { state: LiveState }) {
   const pending = state.gates.filter((g) => g.status === "pending");
   const need = state.slots.reduce((a, s) => a + hrs(s.window), 0);
-  const have = state.slots.reduce((a, s) => a + s.assignments.reduce((b, x) => b + hrs(x.window), 0), 0);
+  const by = (src: string) => state.slots.reduce((a, s) => a + s.assignments.filter((x) => x.source === src).reduce((b, x) => b + hrs(x.window), 0), 0);
+  const plan = by("plan") + by("manager");
+  const ai = by("ai");
+  const have = plan + ai;
+  const pct = need ? (have / need) * 100 : 0;
   const extra = state.history.reduce((a, h) => a + h.extra, 0) + (state.phase !== "done" && state.plan ? state.plan.extraCost : 0);
   const receipts = state.audit.filter((a) => a.status === "ok" && (a.action.startsWith("Delivered") || a.tool === "timetable" || a.tool === "verify")).length;
+  const taps = state.history.reduce((a, h) => a + h.taps, 0);
   return (
-    <section aria-label="Today at a glance" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Metric icon={<ShieldCheck className="size-4" />} label="Needs approval" value={pending.length ? "Yes" : "No"} hint={pending.length ? pending[0].title : "No unsafe action taken"} accent={pending.length > 0} />
-      <Metric icon={<Users className="size-4" />} label="Timetable coverage" value={`${Math.round((have / need) * 100)}%`} hint={`${have}h of ${need}h staffed today`} />
-      <Metric icon={<CircleDollarSign className="size-4" />} label="Extra spend" value={money(extra)} hint={`auto-approved up to S$${state.settings.autoApproveSpend} per recovery`} />
-      <Metric icon={<FileCheck2 className="size-4" />} label="Verified actions" value={String(receipts)} hint="With evidence receipts" />
+    <section aria-label="Today at a glance" className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div style={{ "--d": "60ms" } as CSSProperties} className={`lv-rise col-span-2 flex flex-wrap items-center gap-5 rounded-2xl border-[1.5px] border-foreground bg-background p-5 md:row-span-2 ${SHADOW}`}>
+        <Donut
+          parts={[
+            { value: plan, color: "#111" },
+            { value: ai, color: TEAL },
+            { value: Math.max(0, need - have), color: "transparent" },
+          ]}
+        >
+          <span className="font-display text-3xl font-bold">
+            <Ticker value={pct} />%
+          </span>
+          <span className="text-[10px] text-muted-foreground">staffed</span>
+        </Donut>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label>Timetable coverage</Label>
+            <Users className="size-4" />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {have}h of {need}h staffed today
+          </p>
+          <ul className="space-y-1.5 text-xs">
+            <li className="flex items-center gap-2">
+              <span className="size-2.5 rounded-sm bg-foreground" /> Planned or manager <span className="ml-auto font-mono">{plan}h</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="size-2.5 rounded-sm bg-[#1f5f5b]" /> Filled by the agent <span className="ml-auto font-mono">{ai}h</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="size-2.5 rounded-sm border border-foreground bg-[#ece6da]" /> Still open <span className="ml-auto font-mono">{Math.max(0, need - have)}h</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <Metric delay={120} icon={<ShieldCheck className="size-4" />} label="Needs approval" value={pending.length ? "Yes" : "No"} hint={pending.length ? pending[0].title : "No unsafe action taken"} accent={pending.length > 0} />
+      <Metric delay={180} icon={<CircleDollarSign className="size-4" />} label="Extra spend" value={<Ticker value={extra} format={(n) => money(Math.round(n))} />} hint={`auto-approved up to S$${state.settings.autoApproveSpend}`} />
+      <Metric delay={240} icon={<FileCheck2 className="size-4" />} label="Verified actions" value={<Ticker value={receipts} />} hint="With evidence receipts" />
+      <Metric delay={300} icon={<Pencil className="size-4" />} label="Manager taps" value={<Ticker value={taps} />} hint="Decisions the agent left to you" />
     </section>
   );
 }
 
-function Metric({ icon, label, value, hint, accent = false }: { icon: ReactNode; label: string; value: string; hint: string; accent?: boolean }) {
+function Metric({ icon, label, value, hint, accent = false, delay = 0 }: { icon: ReactNode; label: string; value: ReactNode; hint: string; accent?: boolean; delay?: number }) {
   return (
-    <div className={`rounded-2xl border-[1.5px] border-foreground p-4 ${accent ? "bg-[#ece6da]" : "bg-background"}`}>
+    <div style={{ "--d": `${delay}ms` } as CSSProperties} className={`lv-rise rounded-2xl border-[1.5px] border-foreground p-4 ${SHADOW} ${accent ? "bg-[#ece6da]" : "bg-background"}`}>
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{label}</span>
         {icon}
       </div>
-      <p className="mt-3 text-2xl font-medium tracking-tight tabular-nums">{value}</p>
+      <p className="font-display mt-3 text-3xl font-bold">{value}</p>
       <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
     </div>
   );
 }
 
-// ───────────────────────────────── timetable
+// ───────────────────────────────── timetable (calendar-app style)
 
-function Timetable({ state, act, onChat }: { state: LiveState; act: Act; onChat: (id: string) => void }) {
+function Timetable({ state, act, onChat, now }: { state: LiveState; act: Act; onChat: (id: string) => void; now: number }) {
   const [edit, setEdit] = useState<string | null>(null);
   const span = DAY.end - DAY.start;
   const pct = (h: number) => `${((h - DAY.start) / span) * 100}%`;
@@ -424,95 +553,110 @@ function Timetable({ state, act, onChat }: { state: LiveState; act: Act; onChat:
   const ticks: number[] = [];
   for (let h = DAY.start; h <= DAY.end; h += 2) ticks.push(h);
   const active = state.goal && !["lobby", "done", "checking"].includes(state.phase) ? state.goal.slotId : undefined;
+  const d = new Date(now);
+  const nowH = d.getHours() + d.getMinutes() / 60;
+  const showNow = nowH > DAY.start && nowH < DAY.end;
   return (
-    <Box id="timetable">
+    <Box id="timetable" delay={120}>
       <Head
         icon={<Table2 className="size-4" />}
         title="Today's timetable"
         sub="Click a shift to change who's on it. Clear one and the agent fills it by itself."
         right={
           <div className="flex flex-wrap gap-1.5 text-[11px]">
-            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-foreground bg-background px-1.5">Planned</span>
-            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-foreground bg-foreground px-1.5 text-background">
+            <span className="inline-flex items-center gap-1 rounded-md border-[1.5px] border-foreground bg-background px-1.5">Planned</span>
+            <span className="inline-flex items-center gap-1 rounded-md border-[1.5px] border-foreground bg-[#1f5f5b] px-1.5 text-white">
               <Bot className="size-3" />
               Filled by AI
             </span>
-            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-foreground bg-[#ece6da] px-1.5">
+            <span className="inline-flex items-center gap-1 rounded-md border-[1.5px] border-foreground bg-[#ece6da] px-1.5">
               <Pencil className="size-3" />
               Manager edit
             </span>
-            <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-foreground bg-[#ece6da] px-1.5 text-foreground">Needs staff</span>
+            <span className="inline-flex items-center gap-1 rounded-md border-[1.5px] border-foreground bg-[repeating-linear-gradient(135deg,#d9d1c3_0_4px,#fbf8f2_4px_8px)] px-1.5">Needs staff</span>
           </div>
         }
       />
       <div className="overflow-x-auto p-5">
-        <div className="min-w-[44rem]">
-          <div className="relative ml-36 h-5 font-mono text-[10px] text-muted-foreground">
+        <div className="min-w-[46rem]">
+          <div className="relative ml-36 h-6 font-mono text-[10px] text-muted-foreground">
             {ticks.map((h, i) => (
               <span key={h} className="absolute" style={{ left: pct(h), transform: i === 0 ? "none" : i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}>
                 {fmtHour(h)}
               </span>
             ))}
           </div>
-          <div className="space-y-2">
-            {state.slots.map((sl) => {
-              const isEdit = edit === sl.id;
-              const isActive = active === sl.id;
-              return (
-                <div key={sl.id}>
-                  <div className={`flex items-center gap-2 rounded-xl ${isActive ? "bg-[#ece6da]" : ""}`}>
-                    <button onClick={() => setEdit(isEdit ? null : sl.id)} className="w-34 shrink-0 rounded-lg px-2 py-1.5 text-left hover:bg-muted" aria-expanded={isEdit}>
-                      <span className="block text-xs font-semibold">{sl.role}</span>
-                      <span className="block font-mono text-[10px] text-muted-foreground">{fmtWindow(sl.window)}</span>
-                    </button>
-                    <div className="relative h-11 flex-1 rounded-lg border-[1.5px] border-foreground/25 bg-[repeating-linear-gradient(90deg,transparent_0,transparent_calc(12.5%-1px),rgb(0_0_0/0.06)_calc(12.5%-1px),rgb(0_0_0/0.06)_12.5%)]">
-                      <button
-                        onClick={() => setEdit(isEdit ? null : sl.id)}
-                        aria-label={`Edit ${sl.role} ${fmtWindow(sl.window)}`}
-                        className={`absolute inset-y-1 rounded-md border-[1.5px] border-foreground bg-[repeating-linear-gradient(135deg,#d9d1c3_0_6px,#fbf8f2_6px_12px)] ${isActive ? "animate-pulse" : ""}`}
-                        style={{ left: pct(sl.window.start), width: w(sl.window) }}
-                      >
-                        <span className="px-2 text-[10px] font-semibold text-foreground">Needs staff</span>
+          <div className="relative">
+            {showNow && (
+              <div className="pointer-events-none absolute inset-y-0 right-0 left-36 z-20" aria-hidden>
+                <div className="absolute inset-y-0 w-0 border-l-2 border-[#e4572e]" style={{ left: pct(nowH) }}>
+                  <span className="absolute -top-6 -translate-x-1/2 rounded-full bg-[#e4572e] px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">Now {clock(now).slice(0, 5)}</span>
+                  <span className="absolute -top-0.5 -left-[5px] size-2 rounded-full bg-[#e4572e]" />
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              {state.slots.map((sl) => {
+                const isEdit = edit === sl.id;
+                const isActive = active === sl.id;
+                return (
+                  <div key={sl.id}>
+                    <div className={`flex items-center gap-2 rounded-xl transition-colors ${isActive ? "bg-[#d7e6e3]" : ""}`}>
+                      <button onClick={() => setEdit(isEdit ? null : sl.id)} className="w-34 shrink-0 rounded-lg px-2 py-1.5 text-left hover:bg-[#ece6da]" aria-expanded={isEdit}>
+                        <span className="block text-xs font-semibold">{sl.role}</span>
+                        <span className="block font-mono text-[10px] text-muted-foreground">{fmtWindow(sl.window)}</span>
                       </button>
-                      {isActive &&
-                        state.plan?.segments.map((g) => (
-                          <span
-                            key={`t${g.crewId}`}
-                            className="absolute inset-y-1 flex items-center gap-1 overflow-hidden rounded-md border-[1.5px] border-dashed border-foreground bg-background px-2 text-[11px] font-semibold whitespace-nowrap text-foreground"
-                            style={{ left: pct(g.window.start), width: w(g.window) }}
+                      <div className="relative h-12 flex-1 rounded-xl border-[1.5px] border-foreground/20 bg-[repeating-linear-gradient(90deg,transparent_0,transparent_calc(6.25%-1px),rgb(0_0_0/0.06)_calc(6.25%-1px),rgb(0_0_0/0.06)_6.25%)]">
+                        <button
+                          onClick={() => setEdit(isEdit ? null : sl.id)}
+                          aria-label={`Edit ${sl.role} ${fmtWindow(sl.window)}`}
+                          className={`absolute inset-y-1 flex items-center rounded-lg border-[1.5px] border-dashed border-foreground bg-[repeating-linear-gradient(135deg,#d9d1c3_0_6px,#fbf8f2_6px_12px)] ${isActive ? "lv-blink" : ""}`}
+                          style={{ left: pct(sl.window.start), width: w(sl.window) }}
+                        >
+                          <span className="px-2 text-[10px] font-bold">Needs staff</span>
+                        </button>
+                        {isActive &&
+                          state.plan?.segments.map((g) => (
+                            <span
+                              key={`t${g.crewId}`}
+                              className="lv-grow absolute inset-y-1 flex items-center gap-1.5 overflow-hidden rounded-lg border-[1.5px] border-dashed border-[#1f5f5b] bg-background px-1.5 text-[11px] font-semibold whitespace-nowrap text-[#1f5f5b] transition-[left,width] duration-500"
+                              style={{ left: pct(g.window.start), width: w(g.window) }}
+                            >
+                              <Avatar name={name(g.crewId)} size="size-6" tone="plain" />
+                              {name(g.crewId)} <span className="font-normal opacity-70">pencilled in</span>
+                            </span>
+                          ))}
+                        {sl.assignments.map((a) => (
+                          <button
+                            key={a.crewId + a.window.start + a.source}
+                            onClick={() => onChat(a.crewId)}
+                            title={`Open chat with ${name(a.crewId)}`}
+                            className={`absolute inset-y-1 flex items-center gap-1.5 overflow-hidden rounded-lg border-[1.5px] border-foreground px-1.5 text-[11px] font-semibold whitespace-nowrap shadow-[2px_2px_0_0_#111] transition-[left,width,transform] duration-500 hover:-translate-y-px ${a.source === "ai" ? "lv-grow bg-[#1f5f5b] text-white" : a.source === "manager" ? "lv-grow bg-[#ece6da]" : "bg-background"}`}
+                            style={{ left: pct(a.window.start), width: w(a.window) }}
                           >
-                            {name(g.crewId)} <span className="font-normal opacity-70">pencilled in</span>
+                            <Avatar name={name(a.crewId)} size="size-6" tone={a.source === "ai" ? "dark" : "plain"} />
+                            {a.source === "ai" && <Bot className="size-3 shrink-0" />}
+                            {a.source === "manager" && <Pencil className="size-3 shrink-0" />}
+                            {name(a.crewId)}
+                            <span className="font-normal opacity-75">{fmtWindow(a.window)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {sl.out?.length ? (
+                      <p className="mt-0.5 ml-36 text-[10px] text-muted-foreground">
+                        {sl.out.map((o) => (
+                          <span key={o.crewId} className="mr-2 line-through decoration-foreground">
+                            {name(o.crewId)} ({o.reason})
                           </span>
                         ))}
-                      {sl.assignments.map((a) => (
-                        <button
-                          key={a.crewId + a.window.start}
-                          onClick={() => onChat(a.crewId)}
-                          title={`Open chat with ${name(a.crewId)}`}
-                          className={`absolute inset-y-1 flex items-center gap-1 overflow-hidden rounded-md border-[1.5px] px-2 text-[11px] font-semibold whitespace-nowrap ${a.source === "ai" ? "border-foreground bg-foreground text-background" : a.source === "manager" ? "border-foreground bg-[#ece6da]" : "border-foreground bg-background"}`}
-                          style={{ left: pct(a.window.start), width: w(a.window) }}
-                        >
-                          {a.source === "ai" && <Bot className="size-3 shrink-0" />}
-                          {a.source === "manager" && <Pencil className="size-3 shrink-0" />}
-                          {name(a.crewId)}
-                          <span className="font-normal opacity-70">{fmtWindow(a.window)}</span>
-                        </button>
-                      ))}
-                    </div>
+                      </p>
+                    ) : null}
+                    {isEdit && <SlotEditor sl={sl} state={state} act={act} onClose={() => setEdit(null)} />}
                   </div>
-                  {sl.out?.length ? (
-                    <p className="mt-0.5 ml-36 text-[10px] text-muted-foreground">
-                      {sl.out.map((o) => (
-                        <span key={o.crewId} className="mr-2 line-through decoration-foreground">
-                          {name(o.crewId)} ({o.reason})
-                        </span>
-                      ))}
-                    </p>
-                  ) : null}
-                  {isEdit && <SlotEditor sl={sl} state={state} act={act} onClose={() => setEdit(null)} />}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -527,7 +671,7 @@ function SlotEditor({ sl, state, act, onClose }: { sl: Slot; state: LiveState; a
   const rule = c ? (whyNot({ ...c, today: c.today?.filter((x) => !sl.assignments.some((a) => a.crewId === c.id && overlaps(a.window, x))) }, { window: sl.window, absent: "", needsCert: sl.needsCert }) ?? null) : null;
   const busy = !!state.goal && !["lobby", "done", "checking"].includes(state.phase) && state.goal.slotId !== sl.id;
   return (
-    <div className="mt-2 ml-36 rounded-xl border-[1.5px] border-foreground bg-muted/30 p-3">
+    <div className="lv-pop relative z-30 mt-2 ml-36 rounded-xl border-[1.5px] border-foreground bg-[#f4efe6] p-3 shadow-[2px_2px_0_0_#111]">
       <div className="flex flex-wrap items-end gap-2">
         <div>
           <label htmlFor={`slot-${sl.id}`} className="block text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
@@ -561,57 +705,78 @@ function SlotEditor({ sl, state, act, onClose }: { sl: Slot; state: LiveState; a
   );
 }
 
-// ───────────────────────────────── staff chat
+// ───────────────────────────────── staff chat (WhatsApp-style; bottom sheet on phones)
 
 const QUICK = ["yes I can do the whole shift", "only after 7, and I'd need a grab", "who called in sick?", "can I talk to the manager?", "sorry can't today"];
 
-function StaffChat({ state, act, selected, onSelect, now }: { state: LiveState; act: Act; selected: string | null; onSelect: (id: string) => void; now: number }) {
+function StaffChat({ state, act, selected, nonce, onSelect, now }: { state: LiveState; act: Act; selected: string | null; nonce: number; onSelect: (id: string) => void; now: number }) {
+  const desktop = useMedia("(min-width: 1024px)");
+  const [sheet, setSheet] = useState(false);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (!desktop && selected) setSheet(true);
+  }, [nonce, desktop, selected]);
   const fallback = [...state.crew].sort((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))[0];
   const c = state.crew.find((x) => x.id === selected) ?? fallback;
-  const directory = [...state.crew].sort((a, b) => Number(!!b.contactedAt) - Number(!!a.contactedAt) || Number(!!b.rostered) - Number(!!a.rostered));
+  const directory = [...state.crew].sort((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0) || Number(!!b.rostered) - Number(!!a.rostered));
+  const closeSheet = useCallback(() => setSheet(false), []);
   return (
-    <Box id="chat">
+    <Box id="chat" delay={160}>
       <Head
         icon={<MessagesSquare className="size-4" />}
         title="Staff chat"
         sub="The AI messages people automatically. You can message anyone yourself, or switch the AI off for one person."
         right={<Pill tone="idle">{state.crew.filter((x) => x.seat?.kind === "telegram").length} real phones · rest simulated</Pill>}
       />
-      <div className="grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <div className="max-h-[34rem] overflow-y-auto border-b-[1.5px] border-foreground p-2 lg:border-r-[1.5px] lg:border-b-0">
+      <div className="grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <div className="max-h-[36rem] overflow-y-auto p-2 lg:border-r-[1.5px] lg:border-foreground">
           {directory.map((x) => {
-            const active = x.id === c.id;
+            const active = desktop && x.id === c.id;
             const last = [...x.thread].reverse().find((m) => m.tag !== "welcome");
             const fresh = last && now - last.at < 4000;
+            const sub = x.today?.length && (x.status === "ineligible" || x.status === "bench") ? `Working ${fmtWindow(x.today[0])}` : STATUS[x.status].label;
             return (
-              <button key={x.id} onClick={() => onSelect(x.id)} className={`mb-1 flex w-full items-center gap-2.5 rounded-lg p-2 text-left ${active ? "bg-foreground text-background" : fresh ? "bg-[#ece6da]" : "hover:bg-muted"}`}>
-                <span className={`flex size-8 shrink-0 items-center justify-center rounded-full border-[1.5px] text-[10px] font-semibold ${active ? "border-background" : "border-foreground"}`}>{x.name.slice(0, 2).toUpperCase()}</span>
+              <button key={x.id} onClick={() => onSelect(x.id)} className={`mb-1 flex w-full items-center gap-2.5 rounded-xl border-[1.5px] p-2 text-left transition-colors ${active ? "border-foreground bg-foreground text-background" : fresh ? "border-[#1f5f5b] bg-[#d7e6e3]" : "border-transparent hover:bg-[#f4efe6]"}`}>
+                <span className="relative">
+                  <Avatar name={x.name} size="size-9" tone={active ? "plain" : x.status === "confirmed" ? "ai" : "plain"} />
+                  {x.contactedAt && !x.aiPaused && <span className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-background bg-[#1f5f5b]" />}
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 text-xs font-semibold">
                     {x.name}
                     {x.aiPaused ? <BotOff className="size-3" aria-label="AI off" /> : null}
                     {x.seat?.kind === "telegram" && <Smartphone className="size-3" aria-label="Real phone" />}
+                    {last && <span className={`ml-auto font-mono text-[9px] font-normal ${active ? "opacity-60" : "text-muted-foreground"}`}>{clock(last.at).slice(0, 5)}</span>}
                   </span>
-                  <span className={`block truncate text-[10px] ${active ? "opacity-70" : "text-muted-foreground"}`}>{x.today?.length && (x.status === "ineligible" || x.status === "bench") ? `Working ${fmtWindow(x.today[0])}` : STATUS[x.status].label}</span>
+                  <span className={`block truncate text-[10.5px] ${active ? "opacity-70" : "text-muted-foreground"}`}>{last ? last.text.replace(/\*/g, "") : sub}</span>
                 </span>
               </button>
             );
           })}
         </div>
-        <Conversation c={c} state={state} act={act} />
+        {desktop && <Conversation c={c} state={state} act={act} />}
       </div>
+      {!desktop && (
+        <Drawer open={sheet} onClose={closeSheet} title={`Chat with ${c.name}`}>
+          <Conversation c={c} state={state} act={act} onClose={closeSheet} />
+        </Drawer>
+      )}
     </Box>
   );
 }
 
-function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }) {
+function Conversation({ c, state, act, onClose }: { c: Crew; state: LiveState; act: Act; onClose?: () => void }) {
   const [draft, setDraft] = useState("");
   const [asStaff, setAsStaff] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const msgs = c.thread.filter((m) => m.tag !== "welcome");
   useEffect(() => {
-    box.current?.scrollTo({ top: box.current.scrollHeight });
+    box.current?.scrollTo({ top: box.current.scrollHeight, behavior: "smooth" });
   }, [msgs.length, c.id]);
   const sim = c.seat?.kind !== "telegram";
   const incident = state.goal && !["lobby", "done", "checking"].includes(state.phase);
@@ -621,41 +786,50 @@ function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }
     const r = await act(a);
     setErr(r.ok ? null : (r.error ?? "Could not send"));
   };
+  const working = c.today?.length && (c.status === "ineligible" || c.status === "bench");
   return (
     <div className="flex min-w-0 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b-[1.5px] border-foreground/15 p-4">
-        <div>
-          <p className="text-sm font-semibold">
-            {c.name} <span className="font-normal text-muted-foreground">· {c.role} · {c.outlet}</span>
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {c.today?.length ? `Working today ${c.today.map(fmtWindow).join(", ")}` : "Not working today"} · {c.hoursThisWeek}/{c.maxHours}h this week · {c.seat?.kind === "telegram" ? `Telegram ${c.seat.handle}` : "simulated phone"}
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b-[1.5px] border-foreground p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={c.name} size="size-10" tone={c.status === "confirmed" ? "ai" : "plain"} />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">
+              {c.name} <span className="font-normal text-muted-foreground">· {c.role} · {c.outlet}</span>
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {c.today?.length ? `Working today ${c.today.map(fmtWindow).join(", ")}` : "Not working today"} · {c.hoursThisWeek}/{c.maxHours}h this week · {c.seat?.kind === "telegram" ? `Telegram ${c.seat.handle}` : "simulated phone"}
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Pill tone={c.today?.length && (c.status === "ineligible" || c.status === "bench") ? "good" : STATUS[c.status].tone}>{c.today?.length && (c.status === "ineligible" || c.status === "bench") ? "Working today" : STATUS[c.status].label}</Pill>
+          <Pill tone={working ? "good" : STATUS[c.status].tone}>{working ? "Working today" : STATUS[c.status].label}</Pill>
           <button
             onClick={() => act({ action: "ai_toggle", crewId: c.id, on: !!c.aiPaused })}
             aria-pressed={!c.aiPaused}
-            className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg border-[1.5px] px-2.5 text-[11px] font-medium ${c.aiPaused ? "border-foreground bg-[#ece6da] text-foreground" : "border-foreground bg-foreground text-background"}`}
+            className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border-[1.5px] border-foreground px-2.5 text-[11px] font-semibold shadow-[2px_2px_0_0_#111] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${c.aiPaused ? "bg-[#ece6da] text-foreground" : "bg-[#1f5f5b] text-white"}`}
           >
             {c.aiPaused ? <BotOff className="size-3.5" /> : <Bot className="size-3.5" />}
             {c.aiPaused ? "AI off: you reply by hand" : "AI replies automatically"}
           </button>
+          {onClose && (
+            <button onClick={onClose} aria-label="Close chat" className="rounded-full border-[1.5px] border-foreground p-1.5">
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
-      <div ref={box} role="log" aria-label={`Conversation with ${c.name}`} className="flex max-h-[24rem] min-h-56 flex-col gap-2 overflow-y-auto bg-muted/20 p-4">
+      <div ref={box} role="log" aria-label={`Conversation with ${c.name}`} className="chat-wall flex max-h-[26rem] min-h-64 flex-col gap-2 overflow-y-auto p-4">
         {msgs.length === 0 ? (
-          <p className="m-auto max-w-xs text-center text-xs text-muted-foreground">No messages with {c.name} yet. The agent writes when a shift needs cover, or you can message them below.</p>
+          <p className="m-auto max-w-xs rounded-xl border-[1.5px] border-foreground/20 bg-background/80 p-3 text-center text-xs text-muted-foreground">No messages with {c.name} yet. The agent writes when a shift needs cover, or you can message them below.</p>
         ) : (
           msgs.map((m) => <Bubble key={m.id} m={m} crew={c} act={act} />)
         )}
       </div>
 
-      <div className="space-y-3 border-t-[1.5px] border-foreground/15 p-4">
+      <div className="space-y-3 border-t-[1.5px] border-foreground p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Btn kind="solid" disabled={!canOffer} title={canOffer ? "" : offerWhy} onClick={() => run({ action: "offer_to", crewId: c.id })}>
+          <Btn kind="ai" disabled={!canOffer} title={canOffer ? "" : offerWhy} onClick={() => run({ action: "offer_to", crewId: c.id })}>
             <Sparkles className="size-3.5" />
             AI: offer the open shift to {c.name}
           </Btn>
@@ -670,11 +844,11 @@ function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }
             setDraft("");
           }}
         >
-          <label htmlFor="mgr-msg" className="sr-only">
+          <label htmlFor={`mgr-msg-${c.id}`} className="sr-only">
             Message {c.name} as the manager
           </label>
-          <input id="mgr-msg" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`Message ${c.name} yourself (manual)…`} className="min-h-9 min-w-0 flex-1 rounded-lg border-[1.5px] border-foreground bg-background px-3 text-xs outline-none" />
-          <Btn type="submit" kind="solid">
+          <input id={`mgr-msg-${c.id}`} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`Message ${c.name} yourself (manual)…`} className="min-h-10 min-w-0 flex-1 rounded-full border-[1.5px] border-foreground bg-background px-4 text-xs outline-none" />
+          <Btn type="submit" kind="solid" className="rounded-full">
             <Send className="size-3.5" />
             Send
           </Btn>
@@ -683,8 +857,8 @@ function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }
           <div className="rounded-xl border-[1.5px] border-dashed border-foreground/40 p-3">
             <Label>Reply as {c.name} (simulated phone)</Label>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {(c.rostered && !c.contactedAt ? ["sorry, I'm sick, can't come in today", "omw, running 10 min late", "ok see you later"] : QUICK).map((q) => (
-                <button key={q} onClick={() => void run({ action: "sim_reply", crewId: c.id, text: q })} className="rounded-full border-[1.5px] border-foreground/50 bg-background px-2.5 py-1 text-[11px] hover:border-foreground">
+              {(c.rostered && !c.contactedAt ? [SICK, "omw, running 10 min late", "ok see you later"] : QUICK).map((q) => (
+                <button key={q} onClick={() => void run({ action: "sim_reply", crewId: c.id, text: q })} className="rounded-full border-[1.5px] border-foreground/40 bg-background px-2.5 py-1 text-[11px] transition-colors hover:border-foreground hover:bg-[#f4efe6]">
                   {q}
                 </button>
               ))}
@@ -698,10 +872,10 @@ function Conversation({ c, state, act }: { c: Crew; state: LiveState; act: Act }
                 setAsStaff("");
               }}
             >
-              <label htmlFor="as-staff" className="sr-only">
+              <label htmlFor={`as-staff-${c.id}`} className="sr-only">
                 Reply as {c.name}
               </label>
-              <input id="as-staff" value={asStaff} onChange={(e) => setAsStaff(e.target.value)} placeholder="Or type anything they might say…" className="min-h-9 min-w-0 flex-1 rounded-lg border-[1.5px] border-foreground/50 bg-background px-3 text-xs outline-none" />
+              <input id={`as-staff-${c.id}`} value={asStaff} onChange={(e) => setAsStaff(e.target.value)} placeholder="Or type anything they might say…" className="min-h-9 min-w-0 flex-1 rounded-full border-[1.5px] border-foreground/40 bg-background px-4 text-xs outline-none" />
               <Btn type="submit">Reply</Btn>
             </form>
           </div>
@@ -717,26 +891,34 @@ function Bubble({ m, crew, act }: { m: Msg; crew: Crew; act: Act }) {
   const manual = m.from === "manager";
   const lastOut = [...crew.thread].reverse().find((x) => x.dir === "out");
   const canTap = !incoming && m.buttons && m.id === lastOut?.id && crew.seat?.kind !== "telegram" && !["confirmed", "released", "declined", "human", "absent"].includes(crew.status);
-  const tick: Record<string, string> = { queued: "sending…", sent: "delivered ✓", retrying: `retrying (${m.attempts})`, abandoned: "failed", failed: "failed" };
+  const st = m.status ?? "queued";
+  const ticks = st === "sent" ? <Checks className={`size-3.5 ${manual ? "text-[#7fc4bb]" : "text-[#a8ded6]"}`} aria-label="Delivered" /> : st === "queued" ? <Check className="size-3 opacity-60" aria-label="Sending" /> : <span className="text-[9px] font-semibold">{st === "retrying" ? `retrying (${m.attempts})` : "failed"}</span>;
+  const shape = incoming ? "self-start rounded-2xl rounded-tl-sm bg-white text-foreground" : manual ? "self-end rounded-2xl rounded-tr-sm bg-foreground text-background" : "self-end rounded-2xl rounded-tr-sm bg-[#1f5f5b] text-white";
   return (
-    <div className={`max-w-[85%] rounded-xl border-[1.5px] px-3 py-2 ${incoming ? "self-start border-foreground bg-background" : manual ? "self-end border-foreground bg-[#ece6da]" : "self-end border-foreground bg-foreground text-background"}`}>
-      <p className="flex flex-wrap items-center gap-1 text-[10px] opacity-70">
-        {incoming ? crew.name : manual ? "Manager · manual" : "AI · automatic"} · {clock(m.at)}
-        {!incoming && ` · ${tick[m.status ?? "queued"]}`}
+    <div className={`lv-pop max-w-[85%] border-[1.5px] border-foreground px-3 py-2 shadow-[2px_2px_0_0_#111] ${shape}`}>
+      <p className="flex items-center gap-1 text-[10px] font-semibold opacity-75">
+        {incoming ? crew.name : manual ? "Manager · manual" : (
+          <>
+            <Bot className="size-3" /> AI · automatic
+          </>
+        )}
       </p>
-      <p className="mt-0.5 text-xs leading-5 whitespace-pre-wrap">{m.text.replace(/\*/g, "")}</p>
+      <p className="mt-0.5 text-[12.5px] leading-5 whitespace-pre-wrap">{m.text.replace(/\*/g, "")}</p>
       {!incoming && m.buttons && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {m.buttons.map((b) => (
-            <button key={b.data} disabled={!canTap} onClick={() => act({ action: "sim_button", crewId: crew.id, button: b.data.split(":")[2] })} className="rounded-md border border-current/40 px-2 py-0.5 text-[10px] enabled:hover:bg-white/15 disabled:opacity-50">
+            <button key={b.data} disabled={!canTap} onClick={() => act({ action: "sim_button", crewId: crew.id, button: b.data.split(":")[2] })} className="rounded-full border border-current/50 px-2 py-0.5 text-[10px] enabled:hover:bg-white/15 disabled:opacity-50">
               {b.label}
             </button>
           ))}
         </div>
       )}
+      <p className="mt-0.5 flex items-center justify-end gap-1 font-mono text-[9.5px] opacity-70">
+        {clock(m.at).slice(0, 5)} {!incoming && ticks}
+      </p>
       {m.parsed && (
-        <p className="mt-1 font-mono text-[9px] text-muted-foreground">
-          AI understood: {m.parsed.intent.replace("_", " ")}
+        <p className="mt-1 flex items-center gap-1 border-t border-foreground/10 pt-1 font-mono text-[9px] text-[#1f5f5b]">
+          <Sparkles className="size-2.5" /> AI understood: {m.parsed.intent.replace("_", " ")}
           {m.parsed.window ? ` ${fmtWindow(m.parsed.window)}` : ""}
           {m.parsed.transport ? " +ride" : ""} · {Math.round(m.parsed.confidence * 100)}%
         </p>
@@ -745,12 +927,12 @@ function Bubble({ m, crew, act }: { m: Msg; crew: Crew; act: Act }) {
   );
 }
 
-// ───────────────────────────────── insights
+// ───────────────────────────────── insights (bento)
 
 function RulesCard({ state, act }: { state: LiveState; act: Act }) {
   return (
-    <Box>
-      <Head icon={<ShieldCheck className="size-4" />} title="Rules the manager set once" sub="The agent acts inside these without asking." />
+    <Box className="md:col-span-3" delay={200}>
+      <Head icon={<ShieldCheck className="size-4" />} title="Rules set once" sub="The agent acts inside these without asking." />
       <div className="p-5">
         <ul className="space-y-2 text-xs leading-5">
           {[
@@ -760,7 +942,9 @@ function RulesCard({ state, act }: { state: LiveState; act: Act }) {
             "Ask the manager only for extras over the limit, if nobody can cover, or if someone wants a person",
           ].map((r) => (
             <li key={r} className="flex gap-2">
-              <Check className="mt-0.5 size-3.5 shrink-0" />
+              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-[#1f5f5b] text-white">
+                <Check className="size-2.5" />
+              </span>
               {r}
             </li>
           ))}
@@ -769,14 +953,9 @@ function RulesCard({ state, act }: { state: LiveState; act: Act }) {
           <Label>Auto-approve extras per recovery up to</Label>
           <div className="mt-2 flex gap-2">
             {[0, 30, 100].map((l) => (
-              <button
-                key={l}
-                onClick={() => act({ action: "settings", settings: { autoApproveSpend: l } })}
-                aria-pressed={state.settings.autoApproveSpend === l}
-                className={`min-h-8 rounded-lg border-[1.5px] border-foreground px-3 text-xs font-medium ${state.settings.autoApproveSpend === l ? "bg-foreground text-background" : "bg-background"}`}
-              >
+              <Btn key={l} kind={state.settings.autoApproveSpend === l ? "solid" : "outline"} onClick={() => act({ action: "settings", settings: { autoApproveSpend: l } })}>
                 S${l}
-              </button>
+              </Btn>
             ))}
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">Set S$0 to see the agent stop and ask once.</p>
@@ -792,10 +971,10 @@ function JoinCard({ state, meta, source }: { state: LiveState; meta: LiveMeta; s
   const real = Boolean(meta.joinUrl);
   const joined = state.crew.filter((c) => c.seat?.kind === "telegram");
   return (
-    <Box>
+    <Box className="md:col-span-3" delay={240}>
       <Head icon={<QrCode className="size-4" />} title="Join as staff" sub="Judges play the staff on their own phones." />
       <div className="flex items-start gap-4 p-5">
-        <div className="relative w-24 shrink-0 overflow-hidden rounded-lg border-[1.5px] border-foreground bg-white p-1">
+        <div className="relative w-28 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-foreground bg-white p-1.5 shadow-[2px_2px_0_0_#111]">
           <svg viewBox={`0 0 ${qr.size} ${qr.size}`} className={`block w-full ${real ? "" : "opacity-25"}`} style={{ shapeRendering: "crispEdges" }} role="img" aria-label="QR code to join on Telegram">
             <path d={qr.d} fill="#0a0a0a" />
           </svg>
@@ -813,23 +992,51 @@ function JoinCard({ state, meta, source }: { state: LiveState; meta: LiveMeta; s
 function Fairness({ state }: { state: LiveState }) {
   const added = (id: string) => state.slots.reduce((a, s) => a + s.assignments.filter((x) => x.crewId === id && x.source !== "plan").reduce((b, x) => b + hrs(x.window), 0), 0);
   const rows = state.crew.filter((c) => !c.onLeave).map((c) => ({ c, base: c.hoursThisWeek, add: added(c.id) }));
-  const max = 44;
+  const max = 48;
+  const at = (h: number) => `${(Math.min(h, max) / max) * 100}%`;
   return (
-    <Box>
-      <Head icon={<Scale className="size-4" />} title="Fair hours this week" sub="The agent asks people with the most room first. Black is today's extra shift." />
-      <div className="space-y-1.5 p-5">
-        {rows.map(({ c, base, add }) => (
-          <div key={c.id} className="grid grid-cols-[4rem_1fr_3.5rem] items-center gap-2 text-[11px]">
-            <span className="truncate font-medium">{c.name}</span>
-            <div className="relative h-3 overflow-hidden rounded-full border-[1.5px] border-foreground/60 bg-background">
-              <div className="absolute inset-y-0 left-0 bg-foreground/25" style={{ width: `${(Math.min(base, max) / max) * 100}%` }} />
-              <div className="absolute inset-y-0 bg-foreground" style={{ left: `${(Math.min(base, max) / max) * 100}%`, width: `${(Math.min(add, max - base) / max) * 100}%` }} />
-            </div>
-            <span className="text-right font-mono tabular-nums">
-              {base + add}/{c.maxHours}h
+    <Box className="md:col-span-4" delay={280}>
+      <Head
+        icon={<Scale className="size-4" />}
+        title="Fair hours this week"
+        sub="The agent asks people with the most room first."
+        right={
+          <div className="flex gap-3 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-sm bg-foreground/30" /> booked
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-sm bg-[#1f5f5b]" /> added today
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-3 w-0.5 bg-[#e4572e]" /> weekly cap
             </span>
           </div>
-        ))}
+        }
+      />
+      <div className="p-5">
+        <div className="space-y-1.5">
+          {rows.map(({ c, base, add }) => (
+            <div key={c.id} className="grid grid-cols-[4rem_1fr_3.5rem] items-center gap-2 text-[11px]">
+              <span className="truncate font-medium">{c.name}</span>
+              <div className="relative h-4 rounded-md bg-[#f4efe6]">
+                <div className="absolute inset-y-0 left-0 rounded-l-md bg-foreground/30 transition-all duration-700" style={{ width: at(base) }} />
+                <div className="absolute inset-y-0 bg-[#1f5f5b] transition-all duration-700" style={{ left: at(base), width: at(Math.min(add, max - base)) }} />
+                <div className="absolute -inset-y-0.5 w-0.5 bg-[#e4572e]" style={{ left: at(c.maxHours) }} />
+              </div>
+              <span className="text-right font-mono tabular-nums">
+                {base + add}/{c.maxHours}h
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="relative mt-2 ml-[4.5rem] mr-[4rem] h-4 border-t border-foreground/30 font-mono text-[9px] text-muted-foreground">
+          {[0, 12, 24, 36, 48].map((h, i, a) => (
+            <span key={h} className="absolute top-1" style={{ left: at(h), transform: i === 0 ? "none" : i === a.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}>
+              {h}h
+            </span>
+          ))}
+        </div>
       </div>
     </Box>
   );
@@ -838,19 +1045,22 @@ function Fairness({ state }: { state: LiveState }) {
 function Memory({ state, onChat }: { state: LiveState; onChat: (id: string) => void }) {
   const known = state.crew.filter((c) => c.notes?.length);
   return (
-    <Box>
-      <Head icon={<Brain className="size-4" />} title="What the agent remembers" sub="Learned from replies and used next time it ranks people." />
+    <Box className="md:col-span-2" delay={320}>
+      <Head icon={<Brain className="size-4" />} title="Agent memory" sub="Learned from replies." />
       <div className="p-5">
         {known.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nothing yet. Notes appear here as staff reply, for example who needs a ride or prefers late shifts.</p>
+          <p className="text-xs text-muted-foreground">Nothing yet. Notes appear as staff reply, for example who needs a ride or prefers late shifts.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {known.map((c) => (
-              <li key={c.id} className="text-xs">
-                <button onClick={() => onChat(c.id)} className="font-semibold underline-offset-2 hover:underline">
-                  {c.name}
-                </button>
-                <span className="text-muted-foreground"> · {c.notes!.join(" · ")}</span>
+              <li key={c.id} className="lv-pop flex gap-2 text-xs">
+                <Avatar name={c.name} size="size-6" />
+                <span>
+                  <button onClick={() => onChat(c.id)} className="font-semibold underline-offset-2 hover:underline">
+                    {c.name}
+                  </button>
+                  <span className="block text-muted-foreground">{c.notes!.join(" · ")}</span>
+                </span>
               </li>
             ))}
           </ul>
@@ -864,35 +1074,69 @@ function Impact({ state }: { state: LiveState }) {
   const h = state.history;
   const manual = h.length * state.baseline.minutes;
   const spent = h.reduce((a, x) => a + x.ms, 0) / 60000;
+  const scale = Math.max(state.baseline.minutes, ...h.map((x) => x.ms / 60000), 1);
   return (
-    <Box>
+    <Box id="impact" delay={120}>
       <Head icon={<TrendingUp className="size-4" />} title="Impact today" sub={`Compared with doing it by hand: about ${state.baseline.minutes} min, ${state.baseline.messages} messages and ${state.baseline.apps} apps per gap (${state.baseline.source}).`} />
-      <div className="space-y-4 p-5">
+      <div className="space-y-5 p-5">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat value={String(h.length)} label="gaps filled by the agent" />
-          <Stat value={`${Math.max(0, Math.round(manual - spent))} min`} label="manager time saved" />
-          <Stat value={String(h.reduce((a, x) => a + x.taps, 0))} label="manager taps needed" />
-          <Stat value={String(h.reduce((a, x) => a + x.messages, 0))} label="messages the agent handled" />
+          <Stat label="gaps filled by the agent">
+            <Ticker value={h.length} />
+          </Stat>
+          <Stat label="manager time saved">
+            <Ticker value={Math.max(0, Math.round(manual - spent))} format={(n) => `${Math.round(n)} min`} />
+          </Stat>
+          <Stat label="manager taps needed">
+            <Ticker value={h.reduce((a, x) => a + x.taps, 0)} />
+          </Stat>
+          <Stat label="messages the agent handled">
+            <Ticker value={h.reduce((a, x) => a + x.messages, 0)} />
+          </Stat>
         </div>
-        {h.length > 0 && (
-          <ol className="divide-y divide-foreground/15 overflow-hidden rounded-xl border-[1.5px] border-foreground">
-            {h.map((x, i) => (
-              <li key={i} className="grid gap-1 p-3 text-xs sm:grid-cols-[1fr_auto]">
-                <span>
-                  <span className="font-semibold">
-                    {x.role} {fmtWindow(x.window)}
-                  </span>{" "}
-                  <span className="text-muted-foreground">
-                    · {x.trigger} → {x.outcome}
-                  </span>
-                </span>
-                <span className="font-mono text-muted-foreground tabular-nums">
-                  {fmtElapsed(x.ms)} · {x.taps} taps · {money(x.extra)}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label>Time to cover each gap</Label>
+            <div className="flex gap-3 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="size-2.5 rounded-sm bg-foreground" /> by hand (estimate)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="size-2.5 rounded-sm bg-[#1f5f5b]" /> with ContinuityOS
+              </span>
+            </div>
+          </div>
+          {h.length === 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">Bars appear here after the first recovery.</p>
+          ) : (
+            <ol className="mt-3 space-y-3">
+              {h.map((x, i) => (
+                <li key={i} className="text-xs">
+                  <p className="mb-1 flex flex-wrap justify-between gap-2">
+                    <span>
+                      <span className="font-semibold">
+                        {x.role} {fmtWindow(x.window)}
+                      </span>{" "}
+                      <span className="text-muted-foreground">· {x.trigger}</span>
+                    </span>
+                    <span className="font-mono text-muted-foreground tabular-nums">
+                      {x.taps} taps · {money(x.extra)}
+                    </span>
+                  </p>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3.5 rounded-r-md bg-foreground transition-all duration-700" style={{ width: `${(state.baseline.minutes / scale) * 80}%` }} />
+                      <span className="font-mono text-[10px]">{state.baseline.minutes} min</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="lv-grow h-3.5 min-w-1.5 rounded-r-md bg-[#1f5f5b]" style={{ width: `${(x.ms / 60000 / scale) * 80}%` }} />
+                      <span className="font-mono text-[10px] text-[#1f5f5b]">{fmtElapsed(x.ms)}</span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </div>
     </Box>
   );
@@ -901,11 +1145,13 @@ function Impact({ state }: { state: LiveState }) {
 function EvidenceLog({ state }: { state: LiveState }) {
   const canDownload = !(globalThis as { __lvNoDownload?: boolean }).__lvNoDownload;
   return (
-    <Box>
+    <Box delay={120}>
       <details>
         <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-5">
-          <span className="flex items-center gap-2 text-base font-semibold">
-            <Activity className="size-4" />
+          <span className="font-display flex items-center gap-2 text-lg font-semibold">
+            <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#ece6da]">
+              <Activity className="size-4" />
+            </span>
             Full evidence log
           </span>
           <span className="text-xs text-muted-foreground">{state.audit.length} entries · every decision and delivery receipt</span>
@@ -916,7 +1162,7 @@ function EvidenceLog({ state }: { state: LiveState }) {
               <li key={e.id} className="grid grid-cols-[4.5rem_1fr] gap-2 text-xs">
                 <span className="font-mono text-[10px] text-muted-foreground">{clock(e.at)}</span>
                 <span>
-                  <span className={e.status === "fail" ? "text-foreground" : e.status === "warn" ? "text-foreground" : ""}>{e.action}</span>
+                  <span className={e.status === "fail" ? "line-through decoration-foreground/40" : ""}>{e.action}</span>
                   {e.evidence && <span className="block font-mono text-[10px] break-words text-muted-foreground">{e.evidence}</span>}
                 </span>
               </li>
@@ -939,8 +1185,8 @@ function EvidenceLog({ state }: { state: LiveState }) {
 function DemoBar({ state, meta, act }: { state: LiveState; meta: LiveMeta; act: Act }) {
   const [armed, setArmed] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-2xl border-[1.5px] border-dashed border-foreground/50 p-3">
-      <span className="mr-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Demo controls</span>
+    <div className="flex flex-wrap items-center gap-2 rounded-2xl border-[1.5px] border-dashed border-foreground bg-[#f4efe6]/70 p-3">
+      <span className="mr-1 text-[10px] font-semibold tracking-[0.12em] text-foreground/70 uppercase">Demo controls</span>
       <Btn kind={state.failureInjected ? "danger" : "outline"} onClick={() => act({ action: "failure", on: !state.failureInjected })}>
         <Zap className="size-3.5" />
         {state.failureInjected ? "Messaging is down: restore" : "Break messaging"}
@@ -1026,11 +1272,11 @@ function Timesheet({ state }: { state: LiveState }) {
     const tr = rows
       .map((r) => `<tr><td>${r.name}</td><td>${r.role}</td><td>${r.shift}</td><td class="n">${r.hours}</td><td class="n">${r.rate.toFixed(2)}</td><td class="n">${r.base.toFixed(2)}</td><td class="n">${r.extras ? r.extras.toFixed(2) : "–"}</td><td class="n"><b>${r.total.toFixed(2)}</b></td><td>${r.source}${r.note ? `<br><small>${r.note}</small>` : ""}</td></tr>`)
       .join("");
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Timesheet · ${BUSINESS.name} ${BUSINESS.outlet}</title><style>body{font:14px/1.5 system-ui,sans-serif;margin:40px;color:#111}h1{margin:0 0 4px}p{margin:0 0 20px;color:#555}table{border-collapse:collapse;width:100%}th,td{border:1.5px solid #111;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f2f2f2;font-size:12px;text-transform:uppercase;letter-spacing:.05em}.n{text-align:right;font-variant-numeric:tabular-nums}tfoot td{font-weight:700}small{color:#666}footer{margin-top:24px;font-size:12px;color:#666}@media print{body{margin:16px}}</style></head><body><h1>Timesheet: ${BUSINESS.name} ${BUSINESS.outlet}</h1><p>${date} · generated by ContinuityOS</p><table><thead><tr><th>Name</th><th>Role</th><th>Shift</th><th>Hours</th><th>Rate (S$/h)</th><th>Base (S$)</th><th>Extras (S$)</th><th>Total (S$)</th><th>Notes</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td colspan="3">Total</td><td class="n">${totalHours}</td><td></td><td></td><td></td><td class="n">${total.toFixed(2)}</td><td></td></tr></tfoot></table><footer>Absence reasons are not recorded on this sheet. Extras are reimbursed on receipt.</footer></body></html>`;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Timesheet · ${BUSINESS.name} ${BUSINESS.outlet}</title><style>body{font:14px/1.5 system-ui,sans-serif;margin:40px;color:#111;background:#fbf8f2}h1{margin:0 0 4px}p{margin:0 0 20px;color:#555}table{border-collapse:collapse;width:100%;background:#fff}th,td{border:1.5px solid #111;padding:6px 8px;text-align:left;vertical-align:top}th{background:#ece6da;font-size:12px;text-transform:uppercase;letter-spacing:.05em}.n{text-align:right;font-variant-numeric:tabular-nums}tfoot td{font-weight:700}small{color:#666}footer{margin-top:24px;font-size:12px;color:#666}@media print{body{margin:16px;background:#fff}}</style></head><body><h1>Timesheet: ${BUSINESS.name} ${BUSINESS.outlet}</h1><p>${date} · generated by ContinuityOS</p><table><thead><tr><th>Name</th><th>Role</th><th>Shift</th><th>Hours</th><th>Rate (S$/h)</th><th>Base (S$)</th><th>Extras (S$)</th><th>Total (S$)</th><th>Notes</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td colspan="3">Total</td><td class="n">${totalHours}</td><td></td><td></td><td></td><td class="n">${total.toFixed(2)}</td><td></td></tr></tfoot></table><footer>Absence reasons are not recorded on this sheet. Extras are reimbursed on receipt.</footer></body></html>`;
     save(`timesheet-${BUSINESS.outlet.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.html`, "text/html", html);
   };
   return (
-    <Box id="timesheet">
+    <Box id="timesheet" delay={120}>
       <Head
         icon={<FileText className="size-4" />}
         title="Today's timesheet"
@@ -1068,8 +1314,13 @@ function Timesheet({ state }: { state: LiveState }) {
           </thead>
           <tbody className="divide-y divide-foreground/15">
             {rows.map((r, i) => (
-              <tr key={i} className={r.hours === 0 ? "text-muted-foreground" : ""}>
-                <td className="py-2 pr-3 font-medium">{r.name}</td>
+              <tr key={i} className={`transition-colors hover:bg-[#f4efe6] ${r.hours === 0 ? "text-muted-foreground" : ""}`}>
+                <td className="py-2 pr-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    <Avatar name={r.name} size="size-6" tone={r.source === "Filled by AI" ? "ai" : "plain"} />
+                    {r.name}
+                  </span>
+                </td>
                 <td className="py-2 pr-3">{r.role}</td>
                 <td className="py-2 pr-3 font-mono">{r.shift}</td>
                 <td className="py-2 pr-3 text-right tabular-nums">{r.hours}</td>
@@ -1079,7 +1330,7 @@ function Timesheet({ state }: { state: LiveState }) {
                 </td>
                 <td className="py-2 pr-3 text-right font-semibold tabular-nums">{money(r.total)}</td>
                 <td className="py-2">
-                  <Pill tone={r.source === "Filled by AI" ? "tent" : r.source === "Manager edit" ? "wait" : r.source === "Dropped out" ? "bad" : "idle"}>{r.source}</Pill>
+                  <Pill tone={r.source === "Filled by AI" ? "ai" : r.source === "Manager edit" ? "wait" : r.source === "Dropped out" ? "bad" : "idle"}>{r.source}</Pill>
                 </td>
               </tr>
             ))}
@@ -1102,23 +1353,34 @@ function Timesheet({ state }: { state: LiveState }) {
   );
 }
 
-// ───────────────────────────────── side: how it works
+// ───────────────────────────────── side: about, live activity, steps
 
 function HowItWorks({ state }: { state: LiveState }) {
   return (
-    <aside className="space-y-4 lg:sticky lg:top-24">
-      <Box className="p-5">
+    <aside className="space-y-5 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-2 lg:pb-2">
+      <Box className="p-5" delay={80}>
         <Label>About this project</Label>
-        <h2 className="mt-1 text-lg leading-snug font-semibold">One less thing for the shift manager</h2>
+        <h2 className="font-display mt-1 text-xl leading-snug font-bold">One less thing for the shift manager</h2>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
           When someone calls in sick or doesn&apos;t show up, managers lose an hour texting people one by one. ContinuityOS notices the gap, asks the right staff in parallel, rebuilds the timetable and only interrupts the manager for real decisions.
         </p>
       </Box>
-      <Box className="p-5">
-        <Label>What the agent does, live</Label>
+      <Box className="p-5" delay={140}>
+        <div className="flex items-center justify-between">
+          <Label>Live activity</Label>
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold text-[#1f5f5b]">
+            <span className="lv-blink size-2 rounded-full bg-[#1f5f5b]" /> LIVE
+          </span>
+        </div>
+        <div className="mt-3 max-h-56 overflow-hidden">
+          <ActivityFeed state={state} />
+        </div>
+      </Box>
+      <Box className="p-5" delay={200}>
+        <Label>What the agent does</Label>
         <ol className="mt-3">
           {state.steps.map((s, i) => {
-            const dot = s.status === "done" ? "bg-foreground text-background border-foreground" : s.status === "active" ? "animate-pulse bg-[#ece6da] border-foreground" : "bg-background border-foreground/30 text-muted-foreground";
+            const dot = s.status === "done" ? "bg-foreground text-background border-foreground" : s.status === "active" ? "lv-blink bg-[#1f5f5b] text-white border-foreground" : "bg-background border-foreground/30 text-muted-foreground";
             return (
               <li key={s.id} className="flex gap-3">
                 <div className="flex flex-col items-center">
@@ -1134,7 +1396,7 @@ function HowItWorks({ state }: { state: LiveState }) {
           })}
         </ol>
       </Box>
-      <Box className="p-5">
+      <Box className="p-5" delay={260}>
         <Label>Why judges can trust it</Label>
         <ul className="mt-2 space-y-1.5 text-[11px] leading-4">
           <li>• Hard rules checked before anyone is asked, with reasons shown</li>

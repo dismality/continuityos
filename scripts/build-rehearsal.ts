@@ -77,7 +77,7 @@ const css = compiler.build([...tokens, "h-full", "antialiased", "flex", "min-h-f
 
 const html = `<title>ContinuityOS Live</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
 <style>
 :root { --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --font-geist-mono: "Geist Mono", ui-monospace, Menlo, monospace; color-scheme: light; }
 ${css}

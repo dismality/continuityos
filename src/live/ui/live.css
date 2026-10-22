@@ -1,4 +1,4 @@
-/* Beach white and black: warm off-white surfaces, black ink and outlines. */
+/* Beach white and black: tan sand ground, off-white cards, black ink and outlines, one sea-teal accent for AI actions. */
 .beach {
   --background: #fbf8f2;
   --card: #fbf8f2;
@@ -8,9 +8,107 @@
   --border: #111111;
   --primary: #111111;
   --primary-foreground: #fbf8f2;
+  --ai: #1f5f5b;
 }
 
-/* Live Mode motion for the negotiation map. Everything else uses the dashboard's Tailwind + shadcn styles. */
+/* Sand grain: a faint noise texture over the tan background. */
+.beach-ground {
+  background-color: #ce9771;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.22 0 0 0 0 0.12 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+}
+
+/* Display type for headings: Bricolage Grotesque (Google Fonts), loaded by the page. */
+.font-display {
+  font-family: var(--font-bricolage, "Bricolage Grotesque"), var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+
+/* WhatsApp-style chat wallpaper */
+.chat-wall {
+  background-color: #efe7da;
+  background-image: radial-gradient(rgb(17 17 17 / 0.07) 1px, transparent 1.2px);
+  background-size: 14px 14px;
+}
+
+/* ── motion (hand-built, in the spirit of Motion / Magic UI) */
+.lv-rise {
+  animation: lv-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+.lv-pop {
+  animation: lv-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.lv-grow {
+  transform-origin: left center;
+  animation: lv-grow 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.lv-toast {
+  animation: lv-toast 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.lv-sheet {
+  animation: lv-sheet 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.lv-shimmer {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.lv-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.35) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: lv-shimmer 2.4s ease-in-out infinite;
+}
+.lv-blink {
+  animation: lv-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes lv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes lv-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+}
+@keyframes lv-grow {
+  from {
+    transform: scaleX(0.2);
+    opacity: 0;
+  }
+}
+@keyframes lv-toast {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+}
+@keyframes lv-sheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes lv-shimmer {
+  60%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes lv-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Negotiation beams */
 .live-edge {
   stroke-dasharray: 6 8;
   animation: live-flow 0.9s linear infinite;
@@ -35,9 +133,17 @@
     opacity: 0;
   }
 }
+
 @media (prefers-reduced-motion: reduce) {
   .live-edge,
-  .live-pulse {
+  .live-pulse,
+  .lv-rise,
+  .lv-pop,
+  .lv-grow,
+  .lv-toast,
+  .lv-sheet,
+  .lv-blink,
+  .lv-shimmer::after {
     animation: none;
   }
 }
