@@ -11,6 +11,18 @@
   --ai: #1f5f5b;
 }
 
+/* Cards: thin light border, rounded corners and a soft, diffuse shadow (no black outlines). */
+.soft-card {
+  border: 1px solid rgb(17 17 17 / 0.08);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 2px rgb(17 17 17 / 0.04), 0 12px 32px -10px rgb(17 17 17 / 0.16);
+}
+.soft-inner {
+  border: 1px solid rgb(17 17 17 / 0.09);
+  border-radius: 0.9rem;
+  box-shadow: 0 1px 2px rgb(17 17 17 / 0.04), 0 4px 14px -6px rgb(17 17 17 / 0.12);
+}
+
 /* Sand grain: a faint noise texture over the tan background. */
 .beach-ground {
   background-color: #ce9771;

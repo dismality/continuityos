@@ -118,7 +118,7 @@ export function Toaster({ state }: { state: LiveState }) {
         {[...shown].reverse().map((t, i) => (
           <li
             key={t.id}
-            className={`lv-toast pointer-events-auto flex items-start gap-3 rounded-2xl border-[1.5px] border-foreground bg-background p-3 shadow-[4px_4px_0_0_#111] transition-all duration-300 ${hover || i === 0 ? "" : "[&>*]:opacity-0"}`}
+            className={`lv-toast pointer-events-auto flex items-start gap-3 bg-background p-3 soft-card transition-all duration-300 ${hover || i === 0 ? "" : "[&>*]:opacity-0"}`}
             style={hover || i === 0 ? undefined : { marginTop: "-3.4rem", transform: `scale(${1 - i * 0.05})`, opacity: 1 - i * 0.25 }}
           >
             <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full ${t.kind === "ai" ? "bg-[#1f5f5b] text-white" : t.kind === "warn" ? "border-[1.5px] border-foreground bg-[#ece6da]" : "bg-foreground text-background"}`}>
@@ -170,8 +170,8 @@ export function CommandBar({ open, onClose, commands }: { open: boolean; onClose
   let lastGroup = "";
   return createPortal(
     <div className="beach fixed inset-0 z-50 flex items-start justify-center text-foreground bg-[#111]/40 p-4 pt-[12vh] backdrop-blur-[2px]" onMouseDown={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="Command bar" className="lv-pop w-full max-w-xl overflow-hidden rounded-2xl border-[1.5px] border-foreground bg-background shadow-[6px_6px_0_0_#111]" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 border-b-[1.5px] border-foreground px-4">
+      <div role="dialog" aria-modal="true" aria-label="Command bar" className="lv-pop w-full max-w-xl overflow-hidden bg-background soft-card" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 border-b border-foreground/10 px-4">
           <Search className="size-4 text-muted-foreground" />
           <input
             ref={input}

@@ -51,7 +51,7 @@ export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; m
   const Icon = ICON[biz.industry];
   const staffed = state.slots.filter((s) => s.assignments.length).length;
   return (
-    <section aria-label="Business" className="lv-map relative overflow-hidden rounded-2xl border-[1.5px] border-foreground bg-[#e9dfcf] shadow-[4px_4px_0_0_#111]">
+    <section aria-label="Business" className="lv-map relative overflow-hidden bg-[#e9dfcf] soft-card">
       {/* layer 1: the map of the area */}
       <div className="map-placeholder absolute inset-0" aria-hidden />
       <iframe
@@ -157,8 +157,8 @@ function PlaceViewer({ open, onClose, name, address, area, photo, lat, lng, maps
   const showMap = tab !== "photo";
   return createPortal(
     <div className="beach fixed inset-0 z-50 flex items-center justify-center bg-[#111]/60 p-3 text-foreground backdrop-blur-[2px] sm:p-6" onMouseDown={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={`${name}: photo and map`} className="lv-pop flex h-full max-h-[52rem] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border-[1.5px] border-foreground bg-background shadow-[6px_6px_0_0_#111]" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b-[1.5px] border-foreground px-4 py-3">
+      <div role="dialog" aria-modal="true" aria-label={`${name}: photo and map`} className="lv-pop flex h-full max-h-[52rem] w-full max-w-6xl flex-col overflow-hidden bg-background soft-card" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 px-4 py-3">
           <div className="min-w-0">
             <p className="font-display truncate text-xl font-bold">{name}</p>
             <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
@@ -188,12 +188,12 @@ function PlaceViewer({ open, onClose, name, address, area, photo, lat, lng, maps
             </div>
           )}
           {showMap && (
-            <div className="relative min-h-0 border-foreground max-md:border-t-[1.5px] md:border-l-[1.5px]">
+            <div className="relative min-h-0 border-foreground max-md:border-t md:border-l border-foreground/10">
               <iframe title={`Map of ${area}`} src={map} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen className="absolute inset-0 h-full w-full border-0" />
             </div>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t-[1.5px] border-foreground px-4 py-3 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-foreground/10 px-4 py-3 text-xs">
           <span className="text-muted-foreground">{address}. The business is fictional; the map shows the real area.</span>
           <div className="flex flex-wrap gap-2">
             <a href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border-[1.5px] border-foreground bg-background px-3 font-semibold shadow-[2px_2px_0_0_#111]">
@@ -226,8 +226,8 @@ export function TomorrowCard({ state, act, onOpenLeave }: { state: LiveState; ac
   const link = typeof window === "undefined" ? "" : local ? `${window.location.origin}${window.location.pathname}#leave` : `${window.location.origin}/live/leave`;
   const [copied, setCopied] = useState(false);
   return (
-    <section id="tomorrow" style={{ "--d": "140ms" } as CSSProperties} className="lv-rise scroll-mt-24 rounded-2xl border-[1.5px] border-foreground bg-background shadow-[4px_4px_0_0_#111]">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b-[1.5px] border-foreground px-5 py-4">
+    <section id="tomorrow" style={{ "--d": "140ms" } as CSSProperties} className="lv-rise scroll-mt-24 bg-background soft-card">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-foreground/10 px-5 py-4">
         <div className="min-w-0">
           <h2 className="font-display flex items-center gap-2 text-lg font-semibold">
             <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#fde3d8] text-[#c8431c]">
@@ -289,7 +289,7 @@ export function TomorrowCard({ state, act, onOpenLeave }: { state: LiveState; ac
                 {[...state.notices].reverse().map((n) => {
                   const sl = state.tomorrow.find((x) => x.id === n.slotId) ?? state.slots.find((x) => x.id === n.slotId);
                   return (
-                    <li key={n.id} className="lv-pop flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-[1.5px] border-foreground/20 p-2.5 text-xs">
+                    <li key={n.id} className="lv-pop soft-inner flex flex-wrap items-center gap-x-3 gap-y-1 p-2.5 text-xs">
                       <span className="font-semibold">{name(n.crewId)}</span>
                       <span className="text-muted-foreground">
                         can&apos;t make {n.day === "later" ? n.label : n.day}&apos;s {sl?.role.toLowerCase()} {sl ? fmtWindow(sl.window) : ""} · {VIA[n.via]} · {clock(n.at).slice(0, 5)}
@@ -307,7 +307,7 @@ export function TomorrowCard({ state, act, onOpenLeave }: { state: LiveState; ac
           </div>
         </div>
         <div className="space-y-3">
-          <div className="rounded-xl border-[1.5px] border-foreground bg-[#f4efe6] p-3">
+          <div className="soft-inner bg-[#f4efe6] p-3">
             <p className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Evening check-in</p>
             <p className="mt-1 text-xs">{state.checkinAt ? `Sent at ${clock(state.checkinAt).slice(0, 5)}` : "Runs at 20:00 every evening"}</p>
             <div className="mt-2 grid grid-cols-3 gap-1.5 text-center">
@@ -323,7 +323,7 @@ export function TomorrowCard({ state, act, onOpenLeave }: { state: LiveState; ac
               ))}
             </div>
           </div>
-          <div className="rounded-xl border-[1.5px] border-foreground p-3">
+          <div className="soft-inner p-3">
             <p className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Leave link for staff</p>
             <p className="mt-1 truncate font-mono text-[10px]" title={link}>
               {link || "…"}
@@ -363,7 +363,7 @@ export function LeaveModal({ open, onClose, state, act }: { open: boolean; onClo
   const biz = businessById(state.businessId);
   return createPortal(
     <div className="beach fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#111]/40 p-4 pt-[8vh] text-foreground backdrop-blur-[2px]" onMouseDown={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="Leave link" className="lv-pop w-full max-w-md rounded-2xl border-[1.5px] border-foreground bg-background p-6 shadow-[6px_6px_0_0_#111]" onMouseDown={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Leave link" className="lv-pop w-full max-w-md bg-background p-6 soft-card" onMouseDown={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">What staff see on the leave link</p>
@@ -398,7 +398,7 @@ export function EmploymentActFooter() {
     "Part-time staff: leave pro-rated by hours",
   ];
   return (
-    <footer id="employment-act" className="scroll-mt-24 rounded-2xl border-[1.5px] border-dashed border-foreground/60 bg-[#fbf8f2]/70 p-4 text-[11px] leading-4">
+    <footer id="employment-act" className="scroll-mt-24 soft-card bg-[#fbf8f2]/80 p-4 text-[11px] leading-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 font-semibold">
           <span className="flex size-5 items-center justify-center rounded-md border border-foreground bg-[#fde3d8] text-[#c8431c]">

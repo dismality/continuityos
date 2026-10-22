@@ -144,7 +144,7 @@ export function LeaveApp() {
   const biz = businessById(state?.businessId);
   return (
     <div className="dashboard beach beach-ground flex min-h-screen items-start justify-center px-4 py-10 text-foreground">
-      <div className="lv-rise w-full max-w-md rounded-2xl border-[1.5px] border-foreground bg-background p-6 shadow-[4px_4px_0_0_#111]">
+      <div className="lv-rise w-full max-w-md bg-background p-6 soft-card">
         <div className="mb-5 flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-xl bg-foreground text-background">
             <Waves className="size-5" />
