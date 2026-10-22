@@ -2,4 +2,5 @@ import { createRoot } from "react-dom/client";
 import { LiveApp } from "./live-app.tsx";
 
 /** Entry for the self-contained rehearsal build (no server): `npm run build:site`. */
-createRoot(document.getElementById("root")!).render(<LiveApp source="local" />);
+const mapsKey = (globalThis as { __lvMapsKey?: string }).__lvMapsKey || undefined;
+createRoot(document.getElementById("root")!).render(<LiveApp source="local" mapsKey={mapsKey} />);

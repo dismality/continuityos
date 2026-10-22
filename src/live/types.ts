@@ -48,7 +48,7 @@ export type Msg = {
   /** inbound understanding */
   parsed?: ParsedReply;
   from?: "agent" | "manager";
-  tag?: "welcome" | "check" | "offer" | "chase" | "confirm" | "release" | "info";
+  tag?: "welcome" | "check" | "offer" | "chase" | "confirm" | "release" | "info" | "advance" | "checkin";
 };
 
 export type Button = { label: string; data: string };
@@ -83,6 +83,27 @@ export type Crew = {
   chases: number;
   /** canned replies for the hands-free rehearsal autoplay */
   persona: string[];
+  /** tomorrow's shifts, derived from the tomorrow timetable */
+  tomorrow?: Window[];
+  /** notice id this person was asked to cover ahead of time, and when */
+  advance?: number;
+  advanceAt?: number;
+  /** evening-before check-in for tomorrow's shift */
+  checkin?: "asked" | "ok" | "out";
+};
+
+/** Someone said ahead of time (leave link, chat or evening check-in) that they can't work a shift. */
+export type Notice = {
+  id: number;
+  crewId: string;
+  slotId: string;
+  day: "today" | "tomorrow";
+  via: "leave_link" | "chat" | "checkin";
+  at: number;
+  status: "finding" | "covered" | "no_cover";
+  coverId?: string;
+  asked: string[];
+  coveredAt?: number;
 };
 
 export type Goal = {
@@ -195,7 +216,7 @@ export type StepId = "detect" | "rank" | "approve_outreach" | "negotiate" | "rep
 
 export type Step = { id: StepId; title: string; detail: string; status: "waiting" | "active" | "done" | "blocked" };
 
-export type Baseline = { minutes: number; messages: number; apps: number; source: string };
+export type Baseline = { minutes: number; messages: number; apps: number; source: string; gapsPerMonth?: number };
 
 export type Settings = {
   waveSize: number;
@@ -239,6 +260,13 @@ export type LiveState = {
   /** gaps that appeared while another recovery was running */
   queue: string[];
   history: Recovery[];
+  /** which demo business is loaded (see businesses.ts) */
+  businessId: string;
+  /** tomorrow's timetable: the agent fixes gaps here ahead of time */
+  tomorrow: Slot[];
+  /** advance notices from the leave link, chat or evening check-in */
+  notices: Notice[];
+  checkinAt?: number;
 };
 
 export type LiveEvent =
@@ -258,7 +286,10 @@ export type LiveEvent =
   | { type: "offer_to"; crewId: string }
   | { type: "ai_toggle"; crewId: string; on: boolean }
   | { type: "baseline"; baseline: Partial<Baseline> }
-  | { type: "settings"; settings: Partial<Settings> };
+  | { type: "settings"; settings: Partial<Settings> }
+  | { type: "business"; id: string }
+  | { type: "leave"; crewId: string; day: "today" | "tomorrow"; via?: "leave_link" }
+  | { type: "checkin_tomorrow" };
 
 export type Effect =
   | { kind: "send"; crewId: string; msgId: string; text: string; buttons?: Button[] }

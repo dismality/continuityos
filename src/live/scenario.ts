@@ -1,15 +1,46 @@
+import { businessById, type BusinessProfile } from "./businesses.ts";
 import type { Baseline, Crew, Settings, Slot } from "./types.ts";
 
-/** The business the live demo runs against. Edit freely: everything else is derived from it. */
+/**
+ * The business the live demo runs against. It starts as Kopi & Co and is swapped in place by applyProfile()
+ * when the presenter switches business, so every module that imported it sees the new labels.
+ */
 export const BUSINESS = {
+  id: "kopi",
   name: "Kopi & Co",
   outlet: "Orchard",
   address: "Kopi & Co Orchard, level B2 (demo outlet)",
+  industry: "Café" as BusinessProfile["industry"],
+  coords: { lat: 1.3036, lng: 103.8318 },
   shift: { role: "Closing lead", start: 17, end: 23 },
   absent: "Aisha",
   minRestHours: 10,
   requirement: "food-safety certificate (required to lead a close)",
+  certShort: "food-safety certificate",
+  certNeed: "a certified lead",
+  certMissing: "No food-safety certificate: can't lead a shift",
 };
+
+let profile: BusinessProfile = businessById("kopi");
+
+export function applyProfile(id: string) {
+  profile = businessById(id);
+  Object.assign(BUSINESS, {
+    id: profile.id,
+    name: profile.name,
+    outlet: profile.outlet,
+    address: profile.address,
+    industry: profile.industry,
+    coords: profile.coords,
+    shift: { role: profile.slotRoles["close-lead"], start: 17, end: 23 },
+    absent: profile.names.aisha,
+    requirement: `${profile.certShort} (required for lead shifts)`,
+    certShort: profile.certShort,
+    certNeed: profile.certNeed,
+    certMissing: profile.certMissing,
+  });
+  return profile;
+}
 
 type CrewSeed = Omit<Crew, "seat" | "status" | "thread" | "chases">;
 
@@ -31,27 +62,45 @@ const seeds: CrewSeed[] = [
 ];
 
 export function freshCrew(): Crew[] {
-  return seeds.map((s) => ({ ...s, seat: null, status: "bench", thread: [], chases: 0 }));
+  const p = profile;
+  const branch = (o: string) => (o === "Orchard" ? p.outlet : (p.branches[o as keyof typeof p.branches] ?? o));
+  return seeds.map((s) => ({
+    ...s,
+    name: p.names[s.id] ?? s.name,
+    role: p.roles[s.role] ?? s.role,
+    outlet: branch(s.outlet),
+    persona: s.id === "aisha" ? [p.sickText] : s.persona,
+    seat: null,
+    status: "bench",
+    thread: [],
+    chases: 0,
+  }));
 }
 
 /** Today's timetable at the outlet. The agent watches every slot and edits it when someone drops out. */
 export function freshSlots(): Slot[] {
   const a = (crewId: string, start: number, end: number) => [{ crewId, window: { start, end }, source: "plan" as const }];
+  const r = profile.slotRoles;
   return [
-    { id: "open-lead", role: "Opening lead", window: { start: 7, end: 15 }, needsCert: true, assignments: a("wei", 7, 15) },
-    { id: "barista-am", role: "Barista", window: { start: 7, end: 15 }, needsCert: false, assignments: a("siti", 7, 15) },
-    { id: "kitchen", role: "Kitchen crew", window: { start: 11, end: 19 }, needsCert: false, assignments: a("raj", 11, 19) },
-    { id: "barista-pm", role: "Barista", window: { start: 15, end: 23 }, needsCert: false, assignments: a("ben", 15, 23) },
-    { id: "close-lead", role: "Closing lead", window: { start: 17, end: 23 }, needsCert: true, assignments: a("aisha", 17, 23) },
-    { id: "service-pm", role: "Service crew", window: { start: 18, end: 23 }, needsCert: false, assignments: a("hana", 18, 23) },
+    { id: "open-lead", role: r["open-lead"], window: { start: 7, end: 15 }, needsCert: true, assignments: a("wei", 7, 15) },
+    { id: "barista-am", role: r["barista-am"], window: { start: 7, end: 15 }, needsCert: false, assignments: a("siti", 7, 15) },
+    { id: "kitchen", role: r["kitchen"], window: { start: 11, end: 19 }, needsCert: false, assignments: a("raj", 11, 19) },
+    { id: "barista-pm", role: r["barista-pm"], window: { start: 15, end: 23 }, needsCert: false, assignments: a("ben", 15, 23) },
+    { id: "close-lead", role: r["close-lead"], window: { start: 17, end: 23 }, needsCert: true, assignments: a("aisha", 17, 23) },
+    { id: "service-pm", role: r["service-pm"], window: { start: 18, end: 23 }, needsCert: false, assignments: a("hana", 18, 23) },
   ];
 }
 
+/**
+ * Doing it by hand. From one manager interview (a Singapore public-sector tech team): about 7 no-shows a month.
+ * Minutes and messages per gap are our estimates until confirmed by more interviews.
+ */
 export const DEFAULT_BASELINE: Baseline = {
-  minutes: 45,
-  messages: 23,
-  apps: 3,
-  source: "placeholder estimate. Replace with what a real manager tells you",
+  minutes: 40,
+  messages: 12,
+  apps: 2,
+  gapsPerMonth: 7,
+  source: "1 manager interview: ~7 no-shows a month; minutes and messages per gap are estimates",
 };
 
 export const DEFAULT_SETTINGS: Settings = {

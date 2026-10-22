@@ -70,7 +70,7 @@ export class Runtime {
     // quiet tick: keep the old state so pollers can use the version as an ETag
     if (ev.type === "tick" && effects.length === 0 && JSON.stringify({ ...state, version: 0 }) === JSON.stringify({ ...before, version: 0 })) return;
     this.state = state;
-    if (ev.type === "reset") this.persona.clear();
+    if (ev.type === "reset" || ev.type === "business") this.persona.clear();
     for (const fx of effects) void this.run(fx);
     this.listeners.forEach((fn) => fn(this.state));
   }
@@ -135,6 +135,19 @@ export class Runtime {
     const m = c?.thread.find((x) => x.id === msgId);
     if (!c || !m || c.seat?.kind === "telegram") return;
     // the rostered worker stays silent on the check-in message so the no-show path can be shown
+    if (m.tag === "checkin" || m.tag === "advance") {
+      const n = this.state.notices.find((x) => x.id === c.advance);
+      const line =
+        m.tag === "checkin"
+          ? c.id === "siti"
+            ? "sorry, can't make it tmr, need to bring my mum for a medical appointment"
+            : "yes 👍 see you tmr"
+          : n && n.asked.length < 2
+            ? "sorry, can't tmr, I have class"
+            : "yes, I can do tomorrow";
+      setTimeout(() => void this.inbound(crewId, line), 1800 + Math.random() * 2200);
+      return;
+    }
     const wantsAnswer = m.tag === "offer" || m.tag === "chase" || (m.tag === "info" && !!m.buttons?.length);
     if (!wantsAnswer || c.status === "human") return;
     const i = this.persona.get(crewId) ?? 0;

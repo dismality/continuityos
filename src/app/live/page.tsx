@@ -10,7 +10,7 @@ export default async function LivePage({ searchParams }: { searchParams: Promise
   const params = await searchParams;
   return (
     <div className={display.variable}>
-      <LiveApp source={params.rehearsal ? "local" : "server"} />
+      <LiveApp source={params.rehearsal ? "local" : "server"} mapsKey={process.env.GOOGLE_MAPS_EMBED_KEY || undefined} />
     </div>
   );
 }

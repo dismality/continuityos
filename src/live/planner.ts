@@ -7,7 +7,7 @@ export function whyNot(c: Crew, goal: Pick<Goal, "window" | "absent"> & { needsC
   if (c.onLeave) return "On approved leave this week";
   const busy = c.today?.find((w) => w);
   if (busy) return `Already working today (${fmtWindow(busy)}): one shift a day`;
-  if ((goal.needsCert ?? true) && !c.certified) return "No food-safety certificate: can't lead a shift";
+  if ((goal.needsCert ?? true) && !c.certified) return BUSINESS.certMissing;
   const left = c.maxHours - c.hoursThisWeek;
   if (left < 2) return `Only ${left}h left before the ${c.maxHours}h weekly cap (${c.hoursThisWeek}h worked)`;
   if (c.nextShiftStart != null) {

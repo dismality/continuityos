@@ -174,3 +174,55 @@ test("non-responders get one reminder, then are skipped", () => {
 test("QR encoder produces a valid-size symbol", () => {
   assert.equal(qrMatrix("https://t.me/KopiCoCrewBot?start=KX7Q").length, 29);
 });
+
+test("leave link for tomorrow: the agent arranges cover the day before", () => {
+  const h = harness();
+  h.go({ type: "leave", crewId: "siti", day: "tomorrow", via: "leave_link" });
+  const n = h.s.notices[0];
+  assert.equal(n.status, "finding");
+  assert.equal(h.s.tomorrow.find((x) => x.id === "barista-am")!.assignments.length, 0);
+  assert.equal(h.s.slots.find((x) => x.id === "barista-am")!.assignments[0].crewId, "siti", "today is untouched");
+  const asked = n.asked[0];
+  h.reply(asked, "sorry can't tmr");
+  const second = h.s.notices[0].asked[1];
+  assert.ok(second && second !== asked, "moves on to the next person");
+  h.reply(second, "yes I can");
+  assert.equal(h.s.notices[0].status, "covered");
+  assert.deepEqual(h.s.tomorrow.find((x) => x.id === "barista-am")!.assignments.map((a) => [a.crewId, a.source]), [[second, "ai"]]);
+  assert.match(h.s.managerInbox.at(-1)!.text, /Sorted early/);
+  assert.equal(h.s.managerTaps, 0);
+});
+
+test("evening check-in: 'can't make it tmr' in chat starts early cover; 'yes' confirms", () => {
+  const h = harness();
+  h.go({ type: "checkin_tomorrow" });
+  const asked = h.s.crew.filter((c) => c.checkin === "asked").map((c) => c.id);
+  assert.equal(asked.length, 6);
+  h.reply("wei", "yes see you tmr");
+  assert.equal(h.s.crew.find((c) => c.id === "wei")!.checkin, "ok");
+  h.reply("ben", "sorry, can't make it tmr");
+  assert.equal(h.s.notices.length, 1);
+  assert.equal(h.s.notices[0].via, "checkin");
+  assert.equal(h.s.phase, "lobby", "today's recovery is not triggered by a tomorrow notice");
+});
+
+test("'can't make it tmr' in chat without a check-in is still caught", () => {
+  const h = harness();
+  h.reply("hana", "hey can't make it tomorrow, sorry");
+  assert.equal(h.s.notices[0]?.crewId, "hana");
+  assert.equal(h.s.slots.find((x) => x.id === "service-pm")!.assignments[0].crewId, "hana");
+});
+
+test("switching business relabels everything and keeps the agent working", () => {
+  const h = harness();
+  h.go({ type: "business", id: "clinic" });
+  assert.equal(h.s.businessId, "clinic");
+  assert.equal(h.s.slots.find((x) => x.id === "close-lead")!.role, "Nurse (evening)");
+  const lead = h.s.crew.find((c) => c.id === "aisha")!;
+  assert.equal(lead.name, "Farhana");
+  h.reply("aisha", lead.persona[0]);
+  assert.equal(h.s.goal?.trigger?.kind, "sick");
+  assert.ok(h.s.crew.some((c) => c.status === "contacted"));
+  h.go({ type: "business", id: "kopi" });
+  assert.equal(h.s.crew.find((c) => c.id === "aisha")!.name, "Aisha");
+});

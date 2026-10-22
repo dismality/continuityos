@@ -17,7 +17,10 @@ export type LiveAction =
   | { action: "sim_button"; crewId: string; button: string }
   | { action: "autoplay"; on: boolean }
   | { action: "settings"; settings: Partial<Settings> }
-  | { action: "baseline"; baseline: Partial<Baseline> };
+  | { action: "baseline"; baseline: Partial<Baseline> }
+  | { action: "business"; id: string }
+  | { action: "leave"; crewId: string; day: "today" | "tomorrow" }
+  | { action: "checkin_tomorrow" };
 
 export async function applyAction(rt: Runtime, a: LiveAction): Promise<{ ok: boolean; error?: string }> {
   const simSeat = (id: string) => {
@@ -74,6 +77,16 @@ export async function applyAction(rt: Runtime, a: LiveAction): Promise<{ ok: boo
       return { ok: true };
     case "baseline":
       rt.dispatch({ type: "baseline", baseline: a.baseline });
+      return { ok: true };
+    case "business":
+      rt.dispatch({ type: "business", id: String(a.id) });
+      return { ok: true };
+    case "leave":
+      if (!rt.state.crew.some((c) => c.id === a.crewId)) return { ok: false, error: "Unknown staff member" };
+      rt.dispatch({ type: "leave", crewId: a.crewId, day: a.day === "tomorrow" ? "tomorrow" : "today", via: "leave_link" });
+      return { ok: true };
+    case "checkin_tomorrow":
+      rt.dispatch({ type: "checkin_tomorrow" });
       return { ok: true };
     default:
       return { ok: false, error: "unknown action" };

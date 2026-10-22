@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { LiveAction } from "../actions.ts";
 import { whyNot } from "../planner.ts";
 import { qrPath } from "../qr.ts";
+import { BUSINESSES as BUSINESSES_LIST, businessById } from "../businesses.ts";
 import { BUSINESS, fmtHour, fmtWindow, overlaps } from "../scenario.ts";
+import { EmploymentActFooter, LeaveModal, MapHero, switchBusiness, TomorrowCard } from "./business-ui.tsx";
 import type { AuditEntry, Crew, CrewStatus, Gate, LiveState, Msg, Slot } from "../types.ts";
 import { ActivityFeed, CommandBar, Donut, Drawer, OutreachBeams, TEAL, Ticker, Toaster, useMedia, type Cmd } from "./fx.tsx";
 import {
@@ -134,12 +136,25 @@ function Avatar({ name, size = "size-8", tone = "plain", className = "" }: { nam
 
 // ───────────────────────────────── page
 
-export function LiveApp({ source }: { source: Source }) {
+export function LiveApp({ source, mapsKey }: { source: Source; mapsKey?: string }) {
   const { state, meta, act, offline } = useLive(source);
   const now = useNow(500);
   const [chatWith, setChatWith] = useState<string | null>(null);
   const [chatNonce, setChatNonce] = useState(0);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+
+  // the leave link on the demo site is this page with #leave
+  useEffect(() => {
+    const on = () => window.location.hash === "#leave" && setLeaveOpen(true);
+    on();
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+  const closeLeave = useCallback(() => {
+    setLeaveOpen(false);
+    if (window.location.hash === "#leave") history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -172,12 +187,18 @@ export function LiveApp({ source }: { source: Source }) {
     for (const [id, l] of [
       ["status", "Status"],
       ["timetable", "Timetable"],
+      ["tomorrow", "Tomorrow & leave"],
       ["chat", "Staff chat"],
       ["insights", "Insights"],
       ["impact", "Impact"],
       ["timesheet", "Timesheet"],
+      ["employment-act", "Employment Act rules"],
     ])
       out.push({ id: `go-${id}`, group: "Go to", label: l, run: go(id) });
+    out.push({ id: "checkin", group: "Tomorrow", label: "Run the evening check-in", hint: "asks tomorrow's staff", run: () => void act({ action: "checkin_tomorrow" }) });
+    out.push({ id: "leave", group: "Tomorrow", label: "Open the leave link", hint: "what staff see", run: () => setLeaveOpen(true) });
+    for (const c of state.crew) if (c.tomorrow?.length && c.checkin !== "out") out.push({ id: `tmr-${c.id}`, group: "Tomorrow", label: `${c.name} can't make tomorrow`, hint: fmtWindow(c.tomorrow[0]), run: () => void act({ action: "leave", crewId: c.id, day: "tomorrow" }) });
+    for (const b of BUSINESSES_LIST) if (b.id !== state.businessId) out.push({ id: `biz-${b.id}`, group: "Switch business", label: b.name, hint: `${b.industry} · ${b.outlet}`, run: () => switchBusiness(act, b.id) });
     out.push({ id: "fail", group: "Demo", label: state.failureInjected ? "Restore messaging" : "Break messaging", run: () => void act({ action: "failure", on: !state.failureInjected }) });
     out.push({ id: "auto", group: "Demo", label: meta.autoplay ? "Simulated staff wait for me" : "Simulated staff reply on their own", run: () => void act({ action: "autoplay", on: !meta.autoplay }) });
     out.push({ id: "reset", group: "Demo", label: "Reset the day", run: () => void act({ action: "reset" }) });
@@ -186,6 +207,7 @@ export function LiveApp({ source }: { source: Source }) {
 
   if (!state) return <div className="dashboard beach beach-ground flex min-h-screen items-center justify-center text-sm text-foreground">Connecting to the agent…</div>;
   const elapsed = state.startedAt ? (state.finishedAt ?? now) - state.startedAt : 0;
+  const biz = businessById(state.businessId);
   return (
     <div className="dashboard beach beach-ground min-h-screen text-foreground">
       <header className="sticky top-0 z-30 border-b-[1.5px] border-foreground bg-background/95 backdrop-blur-sm">
@@ -197,7 +219,7 @@ export function LiveApp({ source }: { source: Source }) {
             <div>
               <p className="font-display text-lg leading-tight font-bold">ContinuityOS</p>
               <p className="text-xs text-muted-foreground">
-                {BUSINESS.name} · {BUSINESS.outlet} outlet · today
+                {biz.name} · {biz.outlet} · today
               </p>
             </div>
           </div>
@@ -205,6 +227,7 @@ export function LiveApp({ source }: { source: Source }) {
             {[
               ["status", "Status"],
               ["timetable", "Timetable"],
+              ["tomorrow", "Tomorrow"],
               ["chat", "Staff chat"],
               ["insights", "Insights"],
               ["timesheet", "Timesheet"],
@@ -231,11 +254,15 @@ export function LiveApp({ source }: { source: Source }) {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl items-start gap-7 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="mx-auto max-w-7xl px-5 pt-7">
+        <MapHero state={state} act={act} mapsKey={mapsKey} />
+      </div>
+      <div className="mx-auto grid max-w-7xl items-start gap-7 px-5 py-7 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <main className="min-w-0 space-y-7">
           <StatusCard state={state} act={act} now={now} meta={meta} />
           <Metrics state={state} />
           <Timetable state={state} act={act} onChat={openChat} now={now} />
+          <TomorrowCard state={state} act={act} onOpenLeave={() => setLeaveOpen(true)} />
           <StaffChat state={state} act={act} selected={chatWith} nonce={chatNonce} onSelect={openChat} now={now} />
           <div id="insights" className="grid scroll-mt-24 gap-7 md:grid-cols-6">
             <RulesCard state={state} act={act} />
@@ -247,9 +274,11 @@ export function LiveApp({ source }: { source: Source }) {
           <EvidenceLog state={state} />
           <DemoBar state={state} meta={meta} act={act} />
           <Timesheet state={state} />
+          <EmploymentActFooter />
         </main>
         <HowItWorks state={state} />
       </div>
+      <LeaveModal open={leaveOpen} onClose={closeLeave} state={state} act={act} />
       <CommandBar open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
       <Toaster state={state} />
     </div>
@@ -364,19 +393,19 @@ function StatusCard({ state, act, now, meta }: { state: LiveState; act: Act; now
             <Label>Try it</Label>
             <p className="mt-1 text-sm">
               {realAisha
-                ? `${aisha.seat?.kind === "telegram" ? aisha.seat.handle : ""} is playing Aisha. Ask them to text the bot that they can't come in, or simulate a no-show.`
+                ? `${aisha.seat?.kind === "telegram" ? aisha.seat.handle : ""} is playing ${aisha.name}. Ask them to text the bot that they can't come in, or simulate a no-show.`
                 : "Make something go wrong. The manager doesn't touch anything after this. You can also clear any shift in the timetable, or press Ctrl K."}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {!realAisha && (
                 <Btn kind="solid" className="lv-shimmer" onClick={() => act({ action: "sim_reply", crewId: "aisha", text: aisha.persona[0] })}>
                   <Smartphone className="size-3.5" />
-                  Aisha texts in sick
+                  {aisha.name} texts in sick
                 </Btn>
               )}
               <Btn onClick={() => act({ action: "no_show", crewId: "aisha" })}>
                 <UserX className="size-3.5" />
-                Aisha doesn&apos;t show up
+                {aisha.name} doesn&apos;t show up
               </Btn>
             </div>
             {!meta.autoplay && <p className="mt-2 text-[11px] text-muted-foreground">Simulated staff are set to wait: answer for them in Staff chat.</p>}
@@ -702,7 +731,7 @@ function SlotEditor({ sl, state, act, onClose }: { sl: Slot; state: LiveState; a
       </div>
       {rule && <p className="mt-2 text-[11px] text-foreground">⚠ This breaks a rule ({rule}). You can still save it; it&apos;s logged as a manager override.</p>}
       {!pick && <p className="mt-2 text-[11px] text-muted-foreground">{busy ? "Another recovery is running, so this one will be queued and handled right after." : "The agent will treat this as an empty shift and start finding cover straight away."}</p>}
-      {sl.needsCert && <p className="mt-1 text-[11px] text-muted-foreground">This shift needs a food-safety certified lead.</p>}
+      {sl.needsCert && <p className="mt-1 text-[11px] text-muted-foreground">This shift needs {businessById(state.businessId).certNeed} ({businessById(state.businessId).certShort}).</p>}
     </div>
   );
 }
@@ -939,7 +968,7 @@ function RulesCard({ state, act }: { state: LiveState; act: Act }) {
         <ul className="space-y-2 text-xs leading-5">
           {[
             "Message eligible staff straight away",
-            `Certified leads for lead shifts; hour caps, ${BUSINESS.minRestHours}h rest, one shift a day`,
+            `${businessById(state.businessId).certNeed[0].toUpperCase()}${businessById(state.businessId).certNeed.slice(1)} for lead shifts; hour caps, ${BUSINESS.minRestHours}h rest, one shift a day`,
             "Never tell anyone who is absent or why",
             "Ask the manager only for extras over the limit, if nobody can cover, or if someone wants a person",
           ].map((r) => (
@@ -983,7 +1012,7 @@ function JoinCard({ state, meta, source }: { state: LiveState; meta: LiveMeta; s
           {!real && <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 bg-foreground py-0.5 text-center text-[9px] font-semibold tracking-wider text-background uppercase">{source === "local" ? "Demo" : "No bot"}</span>}
         </div>
         <div className="text-xs leading-5 text-muted-foreground">
-          <p>{real ? "Scan to get a seat on Telegram. The first person plays Aisha, who calls in sick; the next ones are the staff the agent asks." : "In a live session, judges scan this and get real Telegram messages. Here every phone is simulated."}</p>
+          <p>{real ? "Scan to get a seat on Telegram. The first person plays the evening lead, who calls in sick; the next ones are the staff the agent asks." : "In a live session, judges scan this and get real Telegram messages. Here every phone is simulated."}</p>
           <p className="mt-2 font-medium text-foreground">{joined.length ? `Joined: ${joined.map((c) => c.name).join(", ")}` : "Nobody joined yet"}</p>
         </div>
       </div>
@@ -1081,6 +1110,16 @@ function Impact({ state }: { state: LiveState }) {
     <Box id="impact" delay={120}>
       <Head icon={<TrendingUp className="size-4" />} title="Impact today" sub={`Compared with doing it by hand: about ${state.baseline.minutes} min, ${state.baseline.messages} messages and ${state.baseline.apps} apps per gap (${state.baseline.source}).`} />
       <div className="space-y-5 p-5">
+        {state.baseline.gapsPerMonth ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border-[1.5px] border-foreground bg-[#fde3d8]/60 p-3 text-xs">
+            <span className="font-display text-2xl font-bold text-[#c8431c]">
+              {((state.baseline.gapsPerMonth * state.baseline.minutes) / 60).toFixed(1)} h
+            </span>
+            <span className="min-w-0 flex-1">
+              of a manager&apos;s time a month at about {state.baseline.gapsPerMonth} no-shows a month (from a manager interview), plus about {state.baseline.gapsPerMonth * state.baseline.messages} messages. ContinuityOS takes this to near zero.
+            </span>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="gaps filled by the agent">
             <Ticker value={h.length} />
@@ -1268,14 +1307,14 @@ function Timesheet({ state }: { state: LiveState }) {
     const lines = [["Name", "Role", "Shift", "Hours", "Rate (S$/h)", "Base pay (S$)", "Extras (S$)", "Extras note", "Total (S$)", "Source"].map(esc).join(",")];
     rows.forEach((r) => lines.push([r.name, r.role, r.shift, r.hours, r.rate, r.base.toFixed(2), r.extras.toFixed(2), r.note, r.total.toFixed(2), r.source].map(esc).join(",")));
     lines.push(["Total", "", "", totalHours, "", "", "", "", total.toFixed(2), ""].map(esc).join(","));
-    save(`timesheet-${BUSINESS.outlet.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, "text/csv", lines.join("\n"));
+    save(`timesheet-${businessById(state.businessId).outlet.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`, "text/csv", lines.join("\n"));
   };
   const doc = () => {
     const tr = rows
       .map((r) => `<tr><td>${r.name}</td><td>${r.role}</td><td>${r.shift}</td><td class="n">${r.hours}</td><td class="n">${r.rate.toFixed(2)}</td><td class="n">${r.base.toFixed(2)}</td><td class="n">${r.extras ? r.extras.toFixed(2) : "–"}</td><td class="n"><b>${r.total.toFixed(2)}</b></td><td>${r.source}${r.note ? `<br><small>${r.note}</small>` : ""}</td></tr>`)
       .join("");
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Timesheet · ${BUSINESS.name} ${BUSINESS.outlet}</title><style>body{font:14px/1.5 system-ui,sans-serif;margin:40px;color:#111;background:#fbf8f2}h1{margin:0 0 4px}p{margin:0 0 20px;color:#555}table{border-collapse:collapse;width:100%;background:#fff}th,td{border:1.5px solid #111;padding:6px 8px;text-align:left;vertical-align:top}th{background:#ece6da;font-size:12px;text-transform:uppercase;letter-spacing:.05em}.n{text-align:right;font-variant-numeric:tabular-nums}tfoot td{font-weight:700}small{color:#666}footer{margin-top:24px;font-size:12px;color:#666}@media print{body{margin:16px;background:#fff}}</style></head><body><h1>Timesheet: ${BUSINESS.name} ${BUSINESS.outlet}</h1><p>${date} · generated by ContinuityOS</p><table><thead><tr><th>Name</th><th>Role</th><th>Shift</th><th>Hours</th><th>Rate (S$/h)</th><th>Base (S$)</th><th>Extras (S$)</th><th>Total (S$)</th><th>Notes</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td colspan="3">Total</td><td class="n">${totalHours}</td><td></td><td></td><td></td><td class="n">${total.toFixed(2)}</td><td></td></tr></tfoot></table><footer>Absence reasons are not recorded on this sheet. Extras are reimbursed on receipt.</footer></body></html>`;
-    save(`timesheet-${BUSINESS.outlet.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.html`, "text/html", html);
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Timesheet · ${businessById(state.businessId).name} ${businessById(state.businessId).outlet}</title><style>body{font:14px/1.5 system-ui,sans-serif;margin:40px;color:#111;background:#fbf8f2}h1{margin:0 0 4px}p{margin:0 0 20px;color:#555}table{border-collapse:collapse;width:100%;background:#fff}th,td{border:1.5px solid #111;padding:6px 8px;text-align:left;vertical-align:top}th{background:#ece6da;font-size:12px;text-transform:uppercase;letter-spacing:.05em}.n{text-align:right;font-variant-numeric:tabular-nums}tfoot td{font-weight:700}small{color:#666}footer{margin-top:24px;font-size:12px;color:#666}@media print{body{margin:16px;background:#fff}}</style></head><body><h1>Timesheet: ${businessById(state.businessId).name} ${businessById(state.businessId).outlet}</h1><p>${date} · generated by ContinuityOS</p><table><thead><tr><th>Name</th><th>Role</th><th>Shift</th><th>Hours</th><th>Rate (S$/h)</th><th>Base (S$)</th><th>Extras (S$)</th><th>Total (S$)</th><th>Notes</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td colspan="3">Total</td><td class="n">${totalHours}</td><td></td><td></td><td></td><td class="n">${total.toFixed(2)}</td><td></td></tr></tfoot></table><footer>Absence reasons are not recorded on this sheet. Extras are reimbursed on receipt.</footer></body></html>`;
+    save(`timesheet-${businessById(state.businessId).outlet.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.html`, "text/html", html);
   };
   return (
     <Box id="timesheet" delay={120}>

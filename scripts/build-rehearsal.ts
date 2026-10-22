@@ -9,6 +9,7 @@
  * Optional env for unusual setups:
  *   LIVE_BUILD_ALIASES='{"pkg":"/abs/path"}'   replace packages that are not installed
  *   TAILWIND_DIR=/abs/path/to/tailwindcss      use a tailwindcss package from elsewhere
+ *   GOOGLE_MAPS_EMBED_KEY=...                  optional Maps Embed API key for the map hero (keyless embed otherwise)
  */
 declare const Bun: any; // build script runs under Bun only
 
@@ -85,7 +86,7 @@ ${css}
 <div id="root"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-<script>${process.env.ARTIFACT ? "window.__lvNoDownload=true;" : ""}document.documentElement.classList.add("h-full","antialiased");document.body.className="flex min-h-full flex-col bg-muted/30";</script>
+<script>${process.env.ARTIFACT ? "window.__lvNoDownload=true;" : ""}${process.env.GOOGLE_MAPS_EMBED_KEY ? `window.__lvMapsKey=${JSON.stringify(process.env.GOOGLE_MAPS_EMBED_KEY)};` : ""}document.documentElement.classList.add("h-full","antialiased");document.body.className="flex min-h-full flex-col bg-muted/30";</script>
 <script>${js}</script>
 `;
 const page = process.env.ARTIFACT

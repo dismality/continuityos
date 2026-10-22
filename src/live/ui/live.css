@@ -24,6 +24,65 @@
   letter-spacing: -0.02em;
 }
 
+/* Map hero: a drawn street grid shows while Google Maps loads (or if it is blocked), the live map is toned to the beach palette */
+.map-placeholder {
+  background-color: #e9dfcf;
+  background-image:
+    linear-gradient(90deg, rgb(255 255 255 / 0.65) 0 6px, transparent 6px),
+    linear-gradient(0deg, rgb(255 255 255 / 0.65) 0 6px, transparent 6px),
+    linear-gradient(90deg, rgb(17 17 17 / 0.05) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(17 17 17 / 0.05) 1px, transparent 1px),
+    radial-gradient(circle at 78% 40%, rgb(31 95 91 / 0.18) 0 60px, transparent 61px);
+  background-size: 140px 110px, 140px 110px, 22px 22px, 22px 22px, 100% 100%;
+  background-position: 30px 0, 0 40px, 0 0, 0 0, 0 0;
+}
+.map-frame {
+  filter: grayscale(0.35) sepia(0.35) saturate(0.85) contrast(0.95) brightness(1.02);
+}
+
+/* View Transitions API: the page morphs when switching business */
+.lv-map {
+  view-transition-name: lv-map;
+}
+::view-transition-old(root) {
+  animation: vt-out 0.26s cubic-bezier(0.4, 0, 1, 1) both;
+}
+::view-transition-new(root) {
+  animation: vt-in 0.42s cubic-bezier(0, 0, 0.2, 1) both;
+}
+::view-transition-old(lv-map) {
+  animation: vt-map-out 0.35s ease both;
+}
+::view-transition-new(lv-map) {
+  animation: vt-map-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes vt-map-out {
+  to {
+    opacity: 0;
+    transform: scale(1.04);
+    filter: blur(3px);
+  }
+}
+@keyframes vt-map-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(3px);
+  }
+}
+
 /* WhatsApp-style chat wallpaper */
 .chat-wall {
   background-color: #efe7da;
@@ -143,7 +202,11 @@
   .lv-toast,
   .lv-sheet,
   .lv-blink,
-  .lv-shimmer::after {
+  .lv-shimmer::after,
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-old(lv-map),
+  ::view-transition-new(lv-map) {
     animation: none;
   }
 }

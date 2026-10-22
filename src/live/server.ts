@@ -166,6 +166,11 @@ class LiveServer {
       return;
     }
     const crew = rt.state.crew.find((c) => c.seat?.kind === "telegram" && c.seat.chatId === chatId);
+    if (crew && /^\/leave\b/i.test(text)) {
+      const base = process.env.LIVE_PUBLIC_URL?.replace(/\/$/, "");
+      await sendTelegram(chatId, base ? `Can't make a shift? Use the leave link: ${base}/live/leave\n\nOr just tell me here, e.g. "can't make it tmr".` : `Can't make a shift? Just tell me here, e.g. "can't make it tmr", and I'll arrange cover early.`);
+      return;
+    }
     if (crew) {
       if (!text) return;
       await rt.inbound(crew.id, text);
