@@ -39,6 +39,7 @@ export function initialState(opts: { mode: LiveState["mode"]; code: string; tele
     history: [],
     businessId: BUSINESS.id,
     tomorrow: freshSlots(),
+    usual: Object.fromEntries(freshSlots().map((sl) => [sl.id, sl.assignments[0]?.crewId ?? ""])),
     notices: [],
   };
   syncCrew(s);
@@ -139,7 +140,11 @@ function handle(ctx: Ctx, ev: LiveEvent) {
       const c = crewById(s, ev.crewId);
       if (!c) return;
       c.lastActivityAt = now;
-      if (ev.day === "tomorrow") return tomorrowOut(ctx, c, ev.via ?? "leave_link");
+      if (ev.day === "tomorrow") return earlyOut(ctx, c, ev.via ?? "leave_link");
+      if (ev.day === "later" && ev.date) {
+        if (s.notices.some((n) => n.crewId === c.id && n.date === ev.date)) return;
+        return earlyOut(ctx, c, ev.via ?? "leave_link", ev.date);
+      }
       const sl = slotOf(s, c.id);
       if (!sl) {
         log(ctx, "crew", "leave link", `${c.name} used the leave link for today but isn't on today's timetable`, undefined, "warn");
@@ -821,40 +826,66 @@ function startNext(ctx: Ctx) {
 
 // ───────────────────────── visible plan
 
-// ───────────────────────── tomorrow: cover arranged ahead of time
+// ───────────────────────── cover arranged ahead of time (tomorrow, or any day this week)
 
 const tomorrowSlotOf = (s: LiveState, crewId: string) => (s.tomorrow ?? []).find((sl) => sl.assignments.some((a) => a.crewId === crewId));
 const VIA: Record<Notice["via"], string> = { leave_link: "leave link", chat: "told the agent in chat", checkin: "evening check-in" };
 
-function tomorrowOut(ctx: Ctx, c: Crew, via: Notice["via"]) {
+export const dateLabel = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-SG", { weekday: "short", day: "numeric", month: "short" }).replace(",", "");
+const whenOf = (n: Notice) => (n.day === "tomorrow" ? "tomorrow's" : `${n.label ?? n.date}`);
+
+/** Who works which slot on a later day: the usual roster, minus people who reported out, plus covers already agreed. */
+function laterRoster(s: LiveState, date: string): Slot[] {
+  return s.tomorrow.map((sl) => {
+    const usual = s.usual?.[sl.id];
+    const gone = s.notices.some((n) => n.date === date && n.slotId === sl.id && n.crewId === usual);
+    const cover = s.notices.find((n) => n.date === date && n.slotId === sl.id && n.status === "covered")?.coverId;
+    const who = cover ?? (gone ? undefined : usual);
+    return { ...sl, out: undefined, assignments: who ? [{ crewId: who, window: sl.window, source: cover ? ("ai" as const) : ("plan" as const) }] : [] };
+  });
+}
+
+function earlyOut(ctx: Ctx, c: Crew, via: Notice["via"], date?: string) {
   const { s, now } = ctx;
-  const sl = tomorrowSlotOf(s, c.id);
+  let sl: Slot | undefined;
+  if (date) {
+    sl = laterRoster(s, date).find((x) => x.assignments.some((a) => a.crewId === c.id && a.source === "plan"));
+  } else sl = tomorrowSlotOf(s, c.id);
+  const label = date ? dateLabel(date) : "tomorrow";
   if (!sl) {
-    send(ctx, c, "Thanks for letting me know! You're not on tomorrow's timetable, so there's nothing to change 🙂", "info");
+    send(ctx, c, `Thanks for letting me know! You're not on the timetable ${date ? `on ${label}` : "tomorrow"}, so there's nothing to change 🙂`, "info");
     return;
   }
-  sl.assignments = sl.assignments.filter((a) => a.crewId !== c.id);
-  sl.out = [...(sl.out ?? []), { crewId: c.id, reason: "leave" }];
-  c.checkin = "out";
-  const n: Notice = { id: s.nextId++, crewId: c.id, slotId: sl.id, day: "tomorrow", via, at: now, status: "finding", asked: [] };
+  if (!date) {
+    const live = s.tomorrow.find((x) => x.id === sl!.id)!;
+    live.assignments = live.assignments.filter((a) => a.crewId !== c.id);
+    live.out = [...(live.out ?? []), { crewId: c.id, reason: "leave" }];
+    c.checkin = "out";
+  }
+  const n: Notice = { id: s.nextId++, crewId: c.id, slotId: sl.id, day: date ? "later" : "tomorrow", date, label: date ? label : undefined, via, at: now, status: "finding", asked: [] };
   s.notices.push(n);
-  log(ctx, "agent", "leave", `Advance notice: ${c.name} can't work tomorrow's ${sl.role} ${fmtWindow(sl.window)}`, `${VIA[via]}; the reason stays private`, "warn");
-  send(ctx, c, `Thanks for telling us early, ${c.name} 🙏 I'll find cover for tomorrow's ${lower(sl.role)} shift (${fmtWindow(sl.window)}). You don't need to do anything else.`, "info");
+  log(ctx, "agent", "leave", `Advance notice: ${c.name} can't work ${date ? label : "tomorrow"}'s ${sl.role} ${fmtWindow(sl.window)}`, `${VIA[via]}; the reason stays private`, "warn");
+  send(ctx, c, `Thanks for telling us early, ${c.name} 🙏 I'll find cover for ${date ? label : "tomorrow"}'s ${lower(sl.role)} shift (${fmtWindow(sl.window)}). You don't need to do anything else.`, "info");
   advanceAsk(ctx, n);
 }
 
+/** kept for the chat and check-in paths, which are always about tomorrow */
+const tomorrowOut = (ctx: Ctx, c: Crew, via: Notice["via"]) => earlyOut(ctx, c, via);
+
 function advanceAsk(ctx: Ctx, n: Notice) {
   const { s, now } = ctx;
-  const sl = s.tomorrow.find((x) => x.id === n.slotId)!;
+  const roster = n.day === "tomorrow" ? s.tomorrow : laterRoster(s, n.date!);
+  const sl = roster.find((x) => x.id === n.slotId)!;
   const out = crewById(s, n.crewId)!;
+  const windowsOf = (id: string) => roster.flatMap((x) => x.assignments.filter((a) => a.crewId === id).map((a) => a.window));
   const pool = s.crew
-    .filter((x) => x.id !== n.crewId && !n.asked.includes(x.id) && x.status !== "absent" && x.checkin !== "out" && x.advance === undefined)
-    .map((x) => ({ ...x, today: x.tomorrow ?? [], nextShiftStart: undefined }));
+    .filter((x) => x.id !== n.crewId && !n.asked.includes(x.id) && x.advance === undefined && (n.day === "later" || (x.status !== "absent" && x.checkin !== "out")))
+    .map((x) => ({ ...x, today: windowsOf(x.id), nextShiftStart: undefined }));
   const next = rank(pool, { window: sl.window, absent: "", needsCert: sl.needsCert })[0];
   if (!next) {
     n.status = "no_cover";
-    log(ctx, "agent", "planner", `Tomorrow: nobody eligible left for ${sl.role} ${fmtWindow(sl.window)}`, `${n.asked.length} asked`, "fail");
-    notifyManager(ctx, `⚠️ Heads-up for tomorrow: ${out.name} can't make ${lower(sl.role)} ${fmtWindow(sl.window)}. I asked ${n.asked.length} people and nobody is free. Can you take a look?`);
+    log(ctx, "agent", "planner", `${n.day === "tomorrow" ? "Tomorrow" : n.label}: nobody eligible left for ${sl.role} ${fmtWindow(sl.window)}`, `${n.asked.length} asked`, "fail");
+    notifyManager(ctx, `⚠️ Heads-up for ${n.day === "tomorrow" ? "tomorrow" : n.label}: ${out.name} can't make ${lower(sl.role)} ${fmtWindow(sl.window)}. I asked ${n.asked.length} people and nobody is free. Can you take a look?`);
     return;
   }
   const c = crewById(s, next.crewId)!;
@@ -862,8 +893,8 @@ function advanceAsk(ctx: Ctx, n: Notice) {
   c.advance = n.id;
   c.advanceAt = now;
   c.lastActivityAt = now;
-  log(ctx, "agent", "planner", `Tomorrow: asking ${c.name} to cover ${sl.role} ${fmtWindow(sl.window)}`, next.reasons.slice(0, 2).join(" · "));
-  send(ctx, c, `Hi ${c.name}, planning ahead 🗓 Can you cover tomorrow's ${BUSINESS.outlet} ${lower(sl.role)} shift, ${fmtWindow(sl.window)}? Your usual S$${c.rate}/h. Reply yes or no.`, "advance", [
+  log(ctx, "agent", "planner", `${n.day === "tomorrow" ? "Tomorrow" : n.label}: asking ${c.name} to cover ${sl.role} ${fmtWindow(sl.window)}`, next.reasons.slice(0, 2).join(" · "));
+  send(ctx, c, `Hi ${c.name}, planning ahead 🗓 Can you cover ${whenOf(n)} ${BUSINESS.outlet} ${lower(sl.role)} shift, ${fmtWindow(sl.window)}? Your usual S$${c.rate}/h. Reply yes or no.`, "advance", [
     { label: "✅ Yes", data: `r:${c.id}:yes` },
     { label: "❌ Can't", data: `r:${c.id}:no` },
   ]);
@@ -876,22 +907,23 @@ function onAdvanceReply(ctx: Ctx, c: Crew, p: NonNullable<Msg["parsed"]>): boole
     c.advance = undefined;
     return false;
   }
-  const sl = s.tomorrow.find((x) => x.id === n.slotId)!;
+  const sl = (n.day === "tomorrow" ? s.tomorrow : laterRoster(s, n.date!)).find((x) => x.id === n.slotId)!;
+  const when = n.day === "tomorrow" ? "tomorrow's" : `${n.label}'s`;
   if (p.intent === "accept" || p.intent === "partial" || p.intent === "conditional") {
     c.advance = undefined;
-    sl.assignments = [{ crewId: c.id, window: sl.window, source: "ai" }];
+    if (n.day === "tomorrow") s.tomorrow.find((x) => x.id === n.slotId)!.assignments = [{ crewId: c.id, window: sl.window, source: "ai" }];
     n.status = "covered";
     n.coverId = c.id;
     n.coveredAt = now;
     const out = crewById(s, n.crewId)!;
-    log(ctx, "agent", "timetable", `Tomorrow's timetable updated: ${c.name} covers ${sl.role} ${fmtWindow(sl.window)}`, `sorted the day before, ${n.asked.length} asked`);
-    send(ctx, c, `Thank you ${c.name}! ✅ You're on tomorrow's ${lower(sl.role)} shift, ${fmtWindow(sl.window)}. The timetable is updated.`, "confirm");
-    notifyManager(ctx, `🗓 Sorted early: ${out.name} can't make tomorrow's ${lower(sl.role)} shift (${fmtWindow(sl.window)}). ${c.name} is covering and the timetable is updated.\n\nNothing needed from you.`);
+    log(ctx, "agent", "timetable", `${n.day === "tomorrow" ? "Tomorrow's" : `${n.label}'s`} timetable updated: ${c.name} covers ${sl.role} ${fmtWindow(sl.window)}`, `sorted ahead of time, ${n.asked.length} asked`);
+    send(ctx, c, `Thank you ${c.name}! ✅ You're on ${when} ${lower(sl.role)} shift, ${fmtWindow(sl.window)}. The timetable is updated.`, "confirm");
+    notifyManager(ctx, `🗓 Sorted early: ${out.name} can't make ${when} ${lower(sl.role)} shift (${fmtWindow(sl.window)}). ${c.name} is covering and the timetable is updated.\n\nNothing needed from you.`);
     return true;
   }
   if (p.intent === "decline" || p.intent === "cannot_work" || p.intent === "withdraw") {
     c.advance = undefined;
-    log(ctx, "agent", "planner", `Tomorrow: ${c.name} can't cover`, undefined, "warn");
+    log(ctx, "agent", "planner", `${n.day === "tomorrow" ? "Tomorrow" : n.label}: ${c.name} can't cover`, undefined, "warn");
     send(ctx, c, "No worries, thanks for letting me know 🙏", "info");
     advanceAsk(ctx, n);
     return true;
@@ -900,7 +932,7 @@ function onAdvanceReply(ctx: Ctx, c: Crew, p: NonNullable<Msg["parsed"]>): boole
     send(ctx, c, "I can't share why a shift opens up, that stays between the team member and the manager 🙏 Can you do it?", "advance");
     return true;
   }
-  send(ctx, c, `Just reply yes or no: can you do tomorrow's ${fmtWindow(sl.window)}? 🙂`, "advance");
+  send(ctx, c, `Just reply yes or no: can you do ${when} ${fmtWindow(sl.window)}? 🙂`, "advance");
   return true;
 }
 

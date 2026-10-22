@@ -28,13 +28,18 @@ export type BusinessProfile = {
   branches: { Somerset: string; Tampines: string; Bugis: string };
   /** what the person on the evening lead shift texts when they call in sick */
   sickText: string;
+  /** a free Unsplash photo that looks like this kind of shop (no real shop names or logos) */
+  photo: string;
 };
+
+const unsplash = (id: string) => `https://images.unsplash.com/${id}?w=1400&q=70&auto=format&fit=crop`;
 
 const SAME = { aisha: "Aisha", wei: "Wei", siti: "Siti", ben: "Ben", hana: "Hana", daniel: "Daniel", farah: "Farah", mei: "Mei", jun: "Jun", priya: "Priya", marcus: "Marcus", chloe: "Chloe", raj: "Raj", leon: "Leon" };
 
 export const BUSINESSES: BusinessProfile[] = [
   {
     id: "kopi",
+    photo: unsplash("photo-1756158449200-678a8de156ac"),
     name: "Kopi & Co",
     outlet: "Orchard",
     address: "Kopi & Co Orchard, level B2 (demo outlet)",
@@ -51,6 +56,7 @@ export const BUSINESSES: BusinessProfile[] = [
   },
   {
     id: "bakery",
+    photo: unsplash("photo-1722308253219-4f491ff1bc89"),
     name: "Sunrise Bakehouse",
     outlet: "Tiong Bahru",
     address: "Sunrise Bakehouse, Tiong Bahru (demo outlet)",
@@ -67,6 +73,7 @@ export const BUSINESSES: BusinessProfile[] = [
   },
   {
     id: "salon",
+    photo: unsplash("photo-1781450090585-1a511b7066d9"),
     name: "Lumière Hair Studio",
     outlet: "Holland Village",
     address: "Lumière Hair Studio, Holland Village (demo outlet)",
@@ -83,6 +90,7 @@ export const BUSINESSES: BusinessProfile[] = [
   },
   {
     id: "clinic",
+    photo: unsplash("photo-1519494026892-80bbd2d6fd0d"),
     name: "Harbourside Family Clinic",
     outlet: "Tanjong Pagar",
     address: "Harbourside Family Clinic, Tanjong Pagar (demo clinic)",
@@ -99,6 +107,7 @@ export const BUSINESSES: BusinessProfile[] = [
   },
   {
     id: "books",
+    photo: unsplash("photo-1648999528869-5292670c6681"),
     name: "Inkwell Books",
     outlet: "Bugis",
     address: "Inkwell Books, Bugis (demo store)",
@@ -115,6 +124,7 @@ export const BUSINESSES: BusinessProfile[] = [
   },
   {
     id: "logistics",
+    photo: unsplash("photo-1587293852726-70cdb56c2866"),
     name: "SwiftBox Logistics",
     outlet: "Tuas",
     address: "SwiftBox Logistics, Tuas hub (demo warehouse)",

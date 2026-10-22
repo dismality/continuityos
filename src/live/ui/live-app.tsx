@@ -8,9 +8,8 @@ import { BUSINESSES as BUSINESSES_LIST, businessById } from "../businesses.ts";
 import { BUSINESS, fmtHour, fmtWindow, overlaps } from "../scenario.ts";
 import { EmploymentActFooter, LeaveModal, MapHero, switchBusiness, TomorrowCard } from "./business-ui.tsx";
 import type { AuditEntry, Crew, CrewStatus, Gate, LiveState, Msg, Slot } from "../types.ts";
-import { ActivityFeed, CommandBar, Donut, Drawer, OutreachBeams, TEAL, Ticker, Toaster, useMedia, type Cmd } from "./fx.tsx";
+import { CommandBar, Donut, Drawer, OutreachBeams, TEAL, Ticker, Toaster, useMedia, type Cmd } from "./fx.tsx";
 import {
-  Activity,
   AlertTriangle,
   BadgeCheck,
   Bot,
@@ -271,7 +270,6 @@ export function LiveApp({ source, mapsKey }: { source: Source; mapsKey?: string 
             <Memory state={state} onChat={openChat} />
           </div>
           <Impact state={state} />
-          <EvidenceLog state={state} />
           <DemoBar state={state} meta={meta} act={act} />
           <Timesheet state={state} />
           <EmploymentActFooter />
@@ -1183,46 +1181,6 @@ function Impact({ state }: { state: LiveState }) {
   );
 }
 
-function EvidenceLog({ state }: { state: LiveState }) {
-  const canDownload = !(globalThis as { __lvNoDownload?: boolean }).__lvNoDownload;
-  return (
-    <Box delay={120}>
-      <details>
-        <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-5">
-          <span className="font-display flex items-center gap-2 text-lg font-semibold">
-            <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#fde3d8] text-[#c8431c]">
-              <Activity className="size-4" />
-            </span>
-            Full evidence log
-          </span>
-          <span className="text-xs text-muted-foreground">{state.audit.length} entries · every decision and delivery receipt</span>
-        </summary>
-        <div className="border-t-[1.5px] border-foreground p-5">
-          <ol className="max-h-96 space-y-2 overflow-y-auto pr-1">
-            {[...state.audit].reverse().map((e: AuditEntry) => (
-              <li key={e.id} className="grid grid-cols-[4.5rem_1fr] gap-2 text-xs">
-                <span className="font-mono text-[10px] text-muted-foreground">{clock(e.at)}</span>
-                <span>
-                  <span className={e.status === "fail" ? "line-through decoration-foreground/40" : ""}>{e.action}</span>
-                  {e.evidence && <span className="block font-mono text-[10px] break-words text-muted-foreground">{e.evidence}</span>}
-                </span>
-              </li>
-            ))}
-          </ol>
-          {canDownload && (
-            <div className="mt-4">
-              <Btn onClick={() => save(`continuityos-evidence-${state.code}.json`, "application/json", JSON.stringify({ exportedAt: new Date().toISOString(), timetable: state.slots, history: state.history, audit: state.audit }, null, 2))}>
-                <Download className="size-3.5" />
-                Export log as JSON
-              </Btn>
-            </div>
-          )}
-        </div>
-      </details>
-    </Box>
-  );
-}
-
 function DemoBar({ state, meta, act }: { state: LiveState; meta: LiveMeta; act: Act }) {
   const [armed, setArmed] = useState(false);
   return (
@@ -1406,16 +1364,35 @@ function HowItWorks({ state }: { state: LiveState }) {
           When someone calls in sick or doesn&apos;t show up, managers lose an hour texting people one by one. ContinuityOS notices the gap, asks the right staff in parallel, rebuilds the timetable and only interrupts the manager for real decisions.
         </p>
       </Box>
-      <Box className="p-5" delay={140}>
+      <Box className="p-5" delay={140} id="logs">
         <div className="flex items-center justify-between">
-          <Label>Live activity</Label>
+          <Label>Logs</Label>
           <span className="flex items-center gap-1.5 text-[10px] font-semibold text-[#1f5f5b]">
-            <span className="lv-blink size-2 rounded-full bg-[#1f5f5b]" /> LIVE
+            <span className="lv-blink size-2 rounded-full bg-[#1f5f5b]" /> LIVE · {state.audit.length}
           </span>
         </div>
-        <div className="mt-3 max-h-56 overflow-hidden">
-          <ActivityFeed state={state} />
-        </div>
+        <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Every decision, message and delivery receipt, newest first.</p>
+        <ol className="mt-3 max-h-[24rem] space-y-2.5 overflow-y-auto pr-1">
+          {state.audit.length === 0 && <li className="text-[11px] text-muted-foreground">Quiet for now. Every step the agent takes is logged here.</li>}
+          {[...state.audit].reverse().map((e, i) => (
+            <li key={e.id} className={`flex gap-2.5 text-[11px] leading-4 ${i === 0 ? "lv-pop" : ""}`}>
+              <span className={`mt-1 size-2 shrink-0 rounded-full ${e.status === "fail" ? "border-[1.5px] border-foreground" : e.status === "warn" ? "bg-[#c8431c]" : e.actor === "agent" ? "bg-[#1f5f5b]" : "bg-foreground"}`} />
+              <span className="min-w-0">
+                <span className={e.status === "fail" ? "line-through decoration-foreground/40" : ""}>{e.action}</span>
+                <span className="ml-1.5 font-mono text-[9.5px] text-muted-foreground">{clock(e.at)}</span>
+                {e.evidence && <span className="block font-mono text-[9.5px] break-words text-muted-foreground">{e.evidence}</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+        {!(globalThis as { __lvNoDownload?: boolean }).__lvNoDownload && state.audit.length > 0 && (
+          <div className="mt-3">
+            <Btn onClick={() => save(`continuityos-logs-${state.code}.json`, "application/json", JSON.stringify({ exportedAt: new Date().toISOString(), timetable: state.slots, tomorrow: state.tomorrow, notices: state.notices, history: state.history, audit: state.audit }, null, 2))}>
+              <Download className="size-3.5" />
+              Export logs (JSON)
+            </Btn>
+          </div>
+        )}
       </Box>
       <Box className="p-5" delay={200}>
         <Label>What the agent does</Label>
@@ -1436,16 +1413,6 @@ function HowItWorks({ state }: { state: LiveState }) {
             );
           })}
         </ol>
-      </Box>
-      <Box className="p-5" delay={260}>
-        <Label>Why judges can trust it</Label>
-        <ul className="mt-2 space-y-1.5 text-[11px] leading-4">
-          <li>• Hard rules checked before anyone is asked, with reasons shown</li>
-          <li>• Approval rules set once; anything outside them stops for the manager</li>
-          <li>• Every message has a delivery receipt; failures are retried</li>
-          <li>• Absence reasons are never shared with other staff</li>
-          <li>• Any chat can be taken over by a person at any time</li>
-        </ul>
       </Box>
     </aside>
   );

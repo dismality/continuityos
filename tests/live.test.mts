@@ -226,3 +226,16 @@ test("switching business relabels everything and keeps the agent working", () =>
   h.go({ type: "business", id: "kopi" });
   assert.equal(h.s.crew.find((c) => c.id === "aisha")!.name, "Aisha");
 });
+
+test("leave for a day later this week: the agent books cover from the usual roster", () => {
+  const h = harness();
+  h.go({ type: "leave", crewId: "raj", day: "later", date: "2026-10-27", via: "leave_link" });
+  const n = h.s.notices[0];
+  assert.equal(n.day, "later");
+  assert.equal(n.slotId, "kitchen");
+  assert.match(n.label!, /27 Oct/);
+  assert.deepEqual(h.s.tomorrow.find((x) => x.id === "kitchen")!.assignments.map((a) => a.crewId), ["raj"], "tomorrow untouched");
+  h.reply(n.asked[0], "yes");
+  assert.equal(h.s.notices[0].status, "covered");
+  assert.match(h.s.managerInbox.at(-1)!.text, /27 Oct/);
+});

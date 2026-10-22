@@ -97,7 +97,10 @@ export type Notice = {
   id: number;
   crewId: string;
   slotId: string;
-  day: "today" | "tomorrow";
+  day: "today" | "tomorrow" | "later";
+  /** YYYY-MM-DD and a short label for days after tomorrow */
+  date?: string;
+  label?: string;
   via: "leave_link" | "chat" | "checkin";
   at: number;
   status: "finding" | "covered" | "no_cover";
@@ -264,6 +267,8 @@ export type LiveState = {
   businessId: string;
   /** tomorrow's timetable: the agent fixes gaps here ahead of time */
   tomorrow: Slot[];
+  /** who normally works each slot (the repeating weekly roster), used for days after tomorrow */
+  usual: Record<string, string>;
   /** advance notices from the leave link, chat or evening check-in */
   notices: Notice[];
   checkinAt?: number;
@@ -288,7 +293,7 @@ export type LiveEvent =
   | { type: "baseline"; baseline: Partial<Baseline> }
   | { type: "settings"; settings: Partial<Settings> }
   | { type: "business"; id: string }
-  | { type: "leave"; crewId: string; day: "today" | "tomorrow"; via?: "leave_link" }
+  | { type: "leave"; crewId: string; day: "today" | "tomorrow" | "later"; date?: string; via?: "leave_link" }
   | { type: "checkin_tomorrow" };
 
 export type Effect =

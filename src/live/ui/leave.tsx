@@ -10,16 +10,39 @@ import { useLive } from "./use-live.ts";
 
 type Act = (a: LiveAction) => Promise<{ ok: boolean; error?: string }>;
 
+/** Today plus the next 7 days, in the browser's local time. */
+function nextDays() {
+  const out: { iso: string; wd: string; day: number; mon: string; long: string }[] = [];
+  const base = new Date();
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i, 12);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    out.push({ iso, wd: d.toLocaleDateString("en-SG", { weekday: "short" }), day: d.getDate(), mon: d.toLocaleDateString("en-SG", { month: "short" }), long: d.toLocaleDateString("en-SG", { weekday: "short", day: "numeric", month: "short" }) });
+  }
+  return out;
+}
+
 /** The leave form staff open from the leave link. No reason is asked for, so none can leak. */
 export function LeaveForm({ state, act }: { state: LiveState; act: Act }) {
   const crew = useMemo(() => [...state.crew].filter((c) => !c.onLeave).sort((a, b) => a.name.localeCompare(b.name)), [state.crew]);
   const [who, setWho] = useState("");
-  const [day, setDay] = useState<"today" | "tomorrow">("tomorrow");
+  const days = useMemo(nextDays, []);
+  const [pick, setPick] = useState(1);
   const [done, setDone] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const c = crew.find((x) => x.id === who);
-  const slots = day === "today" ? state.slots : state.tomorrow;
-  const mine = c ? slots.find((sl) => sl.assignments.some((a) => a.crewId === c.id)) : undefined;
+  const d = days[pick];
+  const already = c && pick > 1 ? state.notices.some((n) => n.crewId === c.id && n.date === d.iso) : false;
+  const mine = !c
+    ? undefined
+    : pick === 0
+      ? state.slots.find((sl) => sl.assignments.some((a) => a.crewId === c.id))
+      : pick === 1
+        ? state.tomorrow.find((sl) => sl.assignments.some((a) => a.crewId === c.id))
+        : already
+          ? undefined
+          : state.tomorrow.find((sl) => state.usual?.[sl.id] === c.id);
+  const when = pick === 0 ? "today" : pick === 1 ? "tomorrow" : `on ${d.long}`;
 
   if (done)
     return (
@@ -44,7 +67,7 @@ export function LeaveForm({ state, act }: { state: LiveState; act: Act }) {
       onSubmit={async (e) => {
         e.preventDefault();
         if (!c || !mine) return;
-        const r = await act({ action: "leave", crewId: c.id, day });
+        const r = await act({ action: "leave", crewId: c.id, day: pick === 0 ? "today" : pick === 1 ? "tomorrow" : "later", date: pick > 1 ? d.iso : undefined });
         if (r.ok) setDone(c.name);
         else setErr(r.error ?? "Couldn't send. Try again.");
       }}
@@ -64,10 +87,19 @@ export function LeaveForm({ state, act }: { state: LiveState; act: Act }) {
       </div>
       <fieldset>
         <legend className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Which day can&apos;t you make?</legend>
-        <div className="mt-1 grid grid-cols-2 gap-2">
-          {(["today", "tomorrow"] as const).map((d) => (
-            <button key={d} type="button" aria-pressed={day === d} onClick={() => setDay(d)} className={`min-h-11 rounded-xl border-[1.5px] border-foreground text-sm font-semibold shadow-[2px_2px_0_0_#111] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${day === d ? "bg-foreground text-background" : "bg-background"}`}>
-              {d === "today" ? "Today" : "Tomorrow"}
+        <div className="mt-1.5 grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+          {days.map((x, i) => (
+            <button
+              key={x.iso}
+              type="button"
+              aria-pressed={pick === i}
+              aria-label={x.long}
+              onClick={() => setPick(i)}
+              className={`flex flex-col items-center rounded-xl border-[1.5px] border-foreground py-1.5 shadow-[2px_2px_0_0_#111] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${pick === i ? "bg-foreground text-background" : "bg-background hover:bg-[#f4efe6]"}`}
+            >
+              <span className={`text-[9px] font-semibold tracking-wider uppercase ${pick === i ? "opacity-70" : "text-muted-foreground"}`}>{i === 0 ? "Today" : i === 1 ? "Tmr" : x.wd}</span>
+              <span className="font-display text-lg leading-tight font-bold">{x.day}</span>
+              <span className={`text-[9px] ${pick === i ? "opacity-70" : "text-muted-foreground"}`}>{x.mon}</span>
             </button>
           ))}
         </div>
@@ -76,10 +108,10 @@ export function LeaveForm({ state, act }: { state: LiveState; act: Act }) {
         <p className={`rounded-xl border-[1.5px] p-3 text-xs ${mine ? "border-foreground bg-[#f4efe6]" : "border-dashed border-foreground/40 text-muted-foreground"}`}>
           {mine ? (
             <>
-              Your shift {day}: <b>{mine.role}</b> {fmtWindow(mine.window)}
+              Your shift {when}: <b>{mine.role}</b> {fmtWindow(mine.window)}
             </>
           ) : (
-            `You're not on the timetable ${day}, so there's nothing to change.`
+            already ? `You've already reported ${d.long}. The agent is on it.` : `You're not on the timetable ${when}, so there's nothing to change.`
           )}
         </p>
       )}

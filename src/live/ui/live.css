@@ -39,6 +39,18 @@
 .map-frame {
   filter: grayscale(0.35) sepia(0.35) saturate(0.85) contrast(0.95) brightness(1.02);
 }
+/* the shop photo fades into the map on its inner edge, and is warmed to the beach palette */
+.shop-photo {
+  filter: sepia(0.25) saturate(0.95) contrast(0.98);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgb(0 0 0 / 0.55) 22%, #000 48%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgb(0 0 0 / 0.55) 22%, #000 48%);
+}
+@media (max-width: 767px) {
+  .shop-photo {
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+  }
+}
 
 /* View Transitions API: the page morphs when switching business */
 .lv-map {

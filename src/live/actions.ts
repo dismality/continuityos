@@ -19,7 +19,7 @@ export type LiveAction =
   | { action: "settings"; settings: Partial<Settings> }
   | { action: "baseline"; baseline: Partial<Baseline> }
   | { action: "business"; id: string }
-  | { action: "leave"; crewId: string; day: "today" | "tomorrow" }
+  | { action: "leave"; crewId: string; day: "today" | "tomorrow" | "later"; date?: string }
   | { action: "checkin_tomorrow" };
 
 export async function applyAction(rt: Runtime, a: LiveAction): Promise<{ ok: boolean; error?: string }> {
@@ -83,7 +83,8 @@ export async function applyAction(rt: Runtime, a: LiveAction): Promise<{ ok: boo
       return { ok: true };
     case "leave":
       if (!rt.state.crew.some((c) => c.id === a.crewId)) return { ok: false, error: "Unknown staff member" };
-      rt.dispatch({ type: "leave", crewId: a.crewId, day: a.day === "tomorrow" ? "tomorrow" : "today", via: "leave_link" });
+      if (a.day === "later" && !/^\d{4}-\d{2}-\d{2}$/.test(a.date ?? "")) return { ok: false, error: "Pick a date" };
+      rt.dispatch({ type: "leave", crewId: a.crewId, day: a.day === "tomorrow" ? "tomorrow" : a.day === "later" ? "later" : "today", date: a.day === "later" ? a.date : undefined, via: "leave_link" });
       return { ok: true };
     case "checkin_tomorrow":
       rt.dispatch({ type: "checkin_tomorrow" });

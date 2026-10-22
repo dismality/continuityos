@@ -40,15 +40,18 @@ export function switchBusiness(act: Act, id: string) {
 export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; mapsKey?: string }) {
   const biz = businessById(state.businessId);
   const [loaded, setLoaded] = useState(false);
+  const [photoOk, setPhotoOk] = useState(false);
   const { lat, lng } = biz.coords;
   const src = mapsKey
     ? `https://www.google.com/maps/embed/v1/view?key=${encodeURIComponent(mapsKey)}&center=${lat},${lng}&zoom=16&maptype=roadmap`
     : `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`;
   useEffect(() => setLoaded(false), [src]);
+  useEffect(() => setPhotoOk(false), [biz.photo]);
   const Icon = ICON[biz.industry];
   const staffed = state.slots.filter((s) => s.assignments.length).length;
   return (
     <section aria-label="Business" className="lv-map relative overflow-hidden rounded-2xl border-[1.5px] border-foreground bg-[#e9dfcf] shadow-[4px_4px_0_0_#111]">
+      {/* layer 1: the map of the area */}
       <div className="map-placeholder absolute inset-0" aria-hidden />
       <iframe
         key={src}
@@ -58,10 +61,20 @@ export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; m
         referrerPolicy="no-referrer-when-downgrade"
         tabIndex={-1}
         onLoad={() => setLoaded(true)}
-        className={`map-frame pointer-events-none absolute inset-0 h-[calc(100%+120px)] w-full -translate-y-[60px] border-0 transition-opacity duration-700 ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`map-frame pointer-events-none absolute inset-0 h-[calc(100%+140px)] w-full -translate-y-[70px] border-0 transition-opacity duration-700 ${loaded ? "opacity-100" : "opacity-0"}`}
       />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,#fbf8f2_0%,rgb(251_248_242/0.94)_34%,rgb(251_248_242/0.35)_62%,transparent_100%)] max-md:bg-[linear-gradient(180deg,rgb(251_248_242/0.96)_0%,rgb(251_248_242/0.9)_60%,rgb(251_248_242/0.5)_100%)]" aria-hidden />
-      <div className="relative p-5 md:p-6">
+      {/* layer 2: a photo of the shop, fading into the map */}
+      <img
+        key={biz.photo}
+        src={biz.photo}
+        alt=""
+        aria-hidden
+        onLoad={() => setPhotoOk(true)}
+        className={`shop-photo pointer-events-none absolute object-cover transition-opacity duration-700 max-md:inset-x-0 max-md:top-0 max-md:h-56 max-md:w-full md:inset-y-0 md:right-0 md:h-full md:w-[52%] ${photoOk ? "opacity-100" : "opacity-0"}`}
+      />
+      {/* layer 3: paper wash so the text stays readable */}
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,#fbf8f2_0%,rgb(251_248_242/0.92)_30%,rgb(251_248_242/0.2)_50%,transparent_62%)] max-md:bg-[linear-gradient(180deg,transparent_0%,rgb(251_248_242/0.35)_28%,rgb(251_248_242/0.94)_48%,#fbf8f2_100%)]" aria-hidden />
+      <div className="relative flex min-h-[23rem] flex-col justify-end p-5 max-md:pt-44 md:p-7">
         <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
           <span className="inline-flex items-center gap-1 rounded-full border-[1.5px] border-foreground bg-[#fde3d8] px-2 py-0.5 text-[#c8431c]">
             <Icon className="size-3.5" /> {biz.industry}
@@ -70,13 +83,13 @@ export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; m
             <MapPin className="size-3.5" /> {biz.outlet}, Singapore
           </span>
         </div>
-        <h2 key={biz.id} className="font-display lv-pop mt-2 text-3xl leading-tight font-bold md:text-4xl">
+        <h2 key={biz.id} className="font-display lv-pop mt-2 max-w-xl text-4xl leading-[1.05] font-bold md:text-5xl">
           {biz.name}
         </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-2 max-w-md text-xs leading-5 text-muted-foreground">
           {biz.address} · {staffed}/{state.slots.length} shifts staffed · {state.crew.length} staff · lead shifts need {biz.certNeed}
         </p>
-        <div className="mt-4">
+        <div className="mt-5">
           <p className="mb-1.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Switch business (fictional demos)</p>
           <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pt-0.5 pb-2">
             {BUSINESSES.map((b) => {
@@ -87,7 +100,7 @@ export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; m
                   key={b.id}
                   onClick={() => !on && switchBusiness(act, b.id)}
                   aria-pressed={on}
-                  className={`flex min-w-[10.5rem] shrink-0 items-center gap-2 rounded-xl border-[1.5px] border-foreground px-2.5 py-2 text-left shadow-[2px_2px_0_0_#111] transition-all hover:-translate-y-px active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${on ? "bg-foreground text-background" : "bg-background/95"}`}
+                  className={`flex min-w-[10.5rem] shrink-0 items-center gap-2 rounded-xl border-[1.5px] border-foreground px-2.5 py-2 text-left shadow-[2px_2px_0_0_#111] backdrop-blur-sm transition-all hover:-translate-y-px active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${on ? "bg-foreground text-background" : "bg-background/90"}`}
                 >
                   <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg border-[1.5px] ${on ? "border-background bg-[#c8431c] text-white" : "border-foreground bg-[#fde3d8] text-[#c8431c]"}`}>
                     <I className="size-4" />
@@ -104,6 +117,7 @@ export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; m
           </div>
         </div>
       </div>
+      <span className="absolute right-3 bottom-2 rounded bg-background/80 px-1.5 py-0.5 text-[9px] text-muted-foreground">Photo: Unsplash · Map: Google</span>
     </section>
   );
 }
@@ -190,7 +204,7 @@ export function TomorrowCard({ state, act, onOpenLeave }: { state: LiveState; ac
                     <li key={n.id} className="lv-pop flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-[1.5px] border-foreground/20 p-2.5 text-xs">
                       <span className="font-semibold">{name(n.crewId)}</span>
                       <span className="text-muted-foreground">
-                        can&apos;t make {n.day}&apos;s {sl?.role.toLowerCase()} {sl ? fmtWindow(sl.window) : ""} · {VIA[n.via]} · {clock(n.at).slice(0, 5)}
+                        can&apos;t make {n.day === "later" ? n.label : n.day}&apos;s {sl?.role.toLowerCase()} {sl ? fmtWindow(sl.window) : ""} · {VIA[n.via]} · {clock(n.at).slice(0, 5)}
                       </span>
                       <span
                         className={`ml-auto inline-flex items-center gap-1 rounded-full border-[1.5px] px-2 py-0.5 text-[11px] font-medium ${n.status === "covered" ? "border-[#1f5f5b] bg-[#1f5f5b] text-white" : n.status === "no_cover" ? "border-foreground bg-[#fde3d8] text-[#c8431c]" : "border-dashed border-[#1f5f5b] text-[#1f5f5b]"}`}

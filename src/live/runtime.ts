@@ -143,8 +143,10 @@ export class Runtime {
             ? "sorry, can't make it tmr, need to bring my mum for a medical appointment"
             : "yes 👍 see you tmr"
           : n && n.asked.length < 2
-            ? "sorry, can't tmr, I have class"
-            : "yes, I can do tomorrow";
+            ? n.day === "tomorrow"
+              ? "sorry, can't tmr, I have class"
+              : "sorry, I'm away that day"
+            : "yes, I can do it";
       setTimeout(() => void this.inbound(crewId, line), 1800 + Math.random() * 2200);
       return;
     }

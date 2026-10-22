@@ -82,9 +82,9 @@ export function Toaster({ state }: { state: LiveState }) {
     const name = (id: string) => state.crew.find((c) => c.id === id)?.name ?? id;
     for (const n of state.notices ?? []) {
       const was = (p.notices ?? []).find((x) => x.id === n.id);
-      if (!was) add.push({ kind: "info", title: `Early notice from ${name(n.crewId)}`, body: `Can't make ${n.day}'s shift · the agent is finding cover now` });
-      else if (was.status !== n.status && n.status === "covered") add.push({ kind: "ai", title: "Tomorrow sorted early", body: `${name(n.coverId!)} covers for ${name(n.crewId)} · nothing needed from you` });
-      else if (was.status !== n.status && n.status === "no_cover") add.push({ kind: "warn", title: "Nobody free for tomorrow", body: `The manager was told about ${name(n.crewId)}'s shift` });
+      if (!was) add.push({ kind: "info", title: `Early notice from ${name(n.crewId)}`, body: `Can't make ${n.day === "later" ? n.label : n.day}'s shift · the agent is finding cover now` });
+      else if (was.status !== n.status && n.status === "covered") add.push({ kind: "ai", title: `${n.day === "later" ? n.label : "Tomorrow"} sorted early`, body: `${name(n.coverId!)} covers for ${name(n.crewId)} · nothing needed from you` });
+      else if (was.status !== n.status && n.status === "no_cover") add.push({ kind: "warn", title: `Nobody free for ${n.day === "later" ? n.label : "tomorrow"}`, body: `The manager was told about ${name(n.crewId)}'s shift` });
     }
     if (p.phase !== state.phase && state.goal && (state.phase === "negotiating" || state.phase === "awaiting_outreach") && (p.phase === "lobby" || p.phase === "done" || p.phase === "checking"))
       add.push({ kind: "ai", title: "Gap spotted", body: `The agent is finding cover for ${state.goal.role.toLowerCase()} ${fmtWindow(state.goal.window)}` });
