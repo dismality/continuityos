@@ -19,6 +19,11 @@ async function call<T>(method: string, body?: Record<string, unknown>, timeoutMs
   return json.result as T;
 }
 
+/** The command menu staff see next to the message box. */
+export async function setCommands(commands: { command: string; description: string }[]) {
+  await call("setMyCommands", { commands }).catch(() => undefined);
+}
+
 export async function getMe() {
   return call<{ id: number; username: string; first_name: string }>("getMe");
 }
