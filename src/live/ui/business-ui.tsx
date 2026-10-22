@@ -11,7 +11,7 @@ import type { LiveAction } from "../actions.ts";
 import { BUSINESSES, businessById, type Industry } from "../businesses.ts";
 import { fmtHour, fmtWindow } from "../scenario.ts";
 import type { LiveState, Notice, Slot } from "../types.ts";
-import { Books, Bot, Bread, CalendarCheck, Check, Coffee, Copy, ExternalLink, FirstAid, Gavel, LinkIcon, MapPin, MoonStars, Scissors, Truck, X } from "./icons.tsx";
+import { Books, Bot, Bread, CalendarCheck, Check, Coffee, Copy, Expand, ExternalLink, FirstAid, Gavel, ImageIcon, LinkIcon, MapPin, MoonStars, Navigation, Scissors, Truck, X } from "./icons.tsx";
 import { LeaveForm } from "./leave.tsx";
 import { clock } from "./use-live.ts";
 
@@ -41,6 +41,7 @@ export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; m
   const biz = businessById(state.businessId);
   const [loaded, setLoaded] = useState(false);
   const [photoOk, setPhotoOk] = useState(false);
+  const [big, setBig] = useState(false);
   const { lat, lng } = biz.coords;
   const src = mapsKey
     ? `https://www.google.com/maps/embed/v1/view?key=${encodeURIComponent(mapsKey)}&center=${lat},${lng}&zoom=16&maptype=roadmap`
@@ -117,8 +118,95 @@ export function MapHero({ state, act, mapsKey }: { state: LiveState; act: Act; m
           </div>
         </div>
       </div>
-      <span className="absolute right-3 bottom-2 rounded bg-background/80 px-1.5 py-0.5 text-[9px] text-muted-foreground">Photo: Unsplash · Map: Google</span>
+      <div className="absolute right-3 bottom-3 flex items-center gap-2">
+        <span className="rounded bg-background/80 px-1.5 py-0.5 text-[9px] text-muted-foreground max-sm:hidden">Photo: Unsplash · Map: Google</span>
+        <button
+          onClick={() => setBig(true)}
+          aria-label={`Enlarge photo and map of ${biz.name}`}
+          title="Enlarge photo and map"
+          className="flex size-9 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-background/95 shadow-[2px_2px_0_0_#111] transition-all hover:-translate-y-px active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+        >
+          <Expand className="size-4" />
+        </button>
+      </div>
+      <PlaceViewer open={big} onClose={() => setBig(false)} name={biz.name} address={biz.address} area={biz.outlet} photo={biz.photo} lat={lat} lng={lng} mapsKey={mapsKey} />
     </section>
+  );
+}
+
+/** Full-screen view of the shop photo and an interactive map, like opening a place in Google Maps. */
+function PlaceViewer({ open, onClose, name, address, area, photo, lat, lng, mapsKey }: { open: boolean; onClose: () => void; name: string; address: string; area: string; photo: string; lat: number; lng: number; mapsKey?: string }) {
+  const [tab, setTab] = useState<"both" | "photo" | "map">("both");
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", k);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  const map = mapsKey
+    ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(mapsKey)}&q=${lat},${lng}&zoom=17`
+    : `https://maps.google.com/maps?q=${lat},${lng}&z=17&output=embed`;
+  const bigPhoto = photo.replace(/w=\d+/, "w=2000");
+  const showPhoto = tab !== "map";
+  const showMap = tab !== "photo";
+  return createPortal(
+    <div className="beach fixed inset-0 z-50 flex items-center justify-center bg-[#111]/60 p-3 text-foreground backdrop-blur-[2px] sm:p-6" onMouseDown={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={`${name}: photo and map`} className="lv-pop flex h-full max-h-[52rem] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border-[1.5px] border-foreground bg-background shadow-[6px_6px_0_0_#111]" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b-[1.5px] border-foreground px-4 py-3">
+          <div className="min-w-0">
+            <p className="font-display truncate text-xl font-bold">{name}</p>
+            <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+              <MapPin className="size-3.5 shrink-0" /> {area}, Singapore · demo location
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex overflow-hidden rounded-lg border-[1.5px] border-foreground text-[11px] font-semibold">
+              {(["both", "photo", "map"] as const).map((t) => (
+                <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t} className={`px-2.5 py-1.5 capitalize ${tab === t ? "bg-foreground text-background" : "bg-background"}`}>
+                  {t === "both" ? "Both" : t === "photo" ? "Photo" : "Map"}
+                </button>
+              ))}
+            </div>
+            <button onClick={onClose} aria-label="Close" className="rounded-full border-[1.5px] border-foreground p-1.5">
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+        <div className={`grid min-h-0 flex-1 ${showPhoto && showMap ? "grid-rows-2 md:grid-cols-2 md:grid-rows-1" : "grid-cols-1"}`}>
+          {showPhoto && (
+            <div className="relative min-h-0 bg-[#111]">
+              <img src={bigPhoto} alt={`A shop like ${name}`} className="h-full w-full object-cover" />
+              <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <ImageIcon className="size-3" /> Stock photo (Unsplash), not the actual shop
+              </span>
+            </div>
+          )}
+          {showMap && (
+            <div className="relative min-h-0 border-foreground max-md:border-t-[1.5px] md:border-l-[1.5px]">
+              <iframe title={`Map of ${area}`} src={map} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen className="absolute inset-0 h-full w-full border-0" />
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t-[1.5px] border-foreground px-4 py-3 text-xs">
+          <span className="text-muted-foreground">{address}. The business is fictional; the map shows the real area.</span>
+          <div className="flex flex-wrap gap-2">
+            <a href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border-[1.5px] border-foreground bg-background px-3 font-semibold shadow-[2px_2px_0_0_#111]">
+              <ExternalLink className="size-3.5" /> Open in Google Maps
+            </a>
+            <a href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border-[1.5px] border-foreground bg-[#1f5f5b] px-3 font-semibold text-white shadow-[2px_2px_0_0_#111]">
+              <Navigation className="size-3.5" /> Directions
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
