@@ -486,8 +486,8 @@ function Metrics({ state }: { state: LiveState }) {
   const receipts = state.audit.filter((a) => a.status === "ok" && (a.action.startsWith("Delivered") || a.tool === "timetable" || a.tool === "verify")).length;
   const taps = state.history.reduce((a, h) => a + h.taps, 0);
   return (
-    <section aria-label="Today at a glance" className="grid grid-cols-2 gap-4 md:grid-cols-4">
-      <div style={{ "--d": "60ms" } as CSSProperties} className={`lv-rise col-span-2 flex flex-wrap items-center gap-5 rounded-2xl border-[1.5px] border-foreground bg-background p-5 md:row-span-2 ${SHADOW}`}>
+    <section aria-label="Today at a glance" className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <div style={{ "--d": "60ms" } as CSSProperties} className={`lv-rise col-span-2 flex flex-wrap items-center gap-5 rounded-2xl border-[1.5px] border-foreground bg-background p-5 xl:row-span-2 ${SHADOW}`}>
         <Donut
           parts={[
             { value: plan, color: "#111" },
