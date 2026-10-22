@@ -886,7 +886,7 @@ function Conversation({ c, state, act, onClose }: { c: Crew; state: LiveState; a
           <div className="rounded-xl border-[1.5px] border-dashed border-foreground/40 p-3">
             <Label>Reply as {c.name} (simulated phone)</Label>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {(c.rostered && !c.contactedAt ? [SICK, "omw, running 10 min late", "ok see you later"] : QUICK).map((q) => (
+              {(c.rostered && !c.contactedAt ? [SICK, "can't make it tmr", "won't be able to come on saturday", "omw, running 10 min late"] : c.status === "bench" ? ["sorry I can't make it", "MC this weekend", ...QUICK.slice(0, 2)] : QUICK).map((q) => (
                 <button key={q} onClick={() => void run({ action: "sim_reply", crewId: c.id, text: q })} className="rounded-full border-[1.5px] border-foreground/40 bg-background px-2.5 py-1 text-[11px] transition-colors hover:border-foreground hover:bg-[#f4efe6]">
                   {q}
                 </button>
@@ -936,7 +936,7 @@ function Bubble({ m, crew, act }: { m: Msg; crew: Crew; act: Act }) {
       {!incoming && m.buttons && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {m.buttons.map((b) => (
-            <button key={b.data} disabled={!canTap} onClick={() => act({ action: "sim_button", crewId: crew.id, button: b.data.split(":")[2] })} className="rounded-full border border-current/50 px-2 py-0.5 text-[10px] enabled:hover:bg-white/15 disabled:opacity-50">
+            <button key={b.data} disabled={!canTap} onClick={() => (b.data.startsWith("l:") ? act({ action: "leave", crewId: crew.id, day: "later", date: b.data.split(":")[2] }) : act({ action: "sim_button", crewId: crew.id, button: b.data.split(":")[2] }))} className="rounded-full border border-current/50 px-2 py-0.5 text-[10px] enabled:hover:bg-white/15 disabled:opacity-50">
               {b.label}
             </button>
           ))}

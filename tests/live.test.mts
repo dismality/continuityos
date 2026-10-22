@@ -252,3 +252,24 @@ test("the person who gave early notice hears back when it's covered, and nobody 
   assert.equal(h.s.notices[0].status, "covered");
   assert.match(h.s.crew.find((c) => c.id === "aisha")!.thread.at(-1)!.text, /covered/);
 });
+
+test("plain language with a day: 'can't come on saturday' books cover for that day", () => {
+  const h = harness(); // the harness clock is Thu 1 Jan 1970
+  h.reply("hana", "hey I won't be able to come on saturday");
+  const n = h.s.notices[0];
+  assert.equal(n?.date, "1970-01-03");
+  assert.equal(n.day, "later");
+  assert.equal(h.s.phase, "lobby", "today is untouched");
+  h.reply("raj", "can't make it sat and sun, sorry");
+  assert.deepEqual(h.s.notices.filter((x) => x.crewId === "raj").map((x) => x.date), ["1970-01-03", "1970-01-04"]);
+});
+
+test("no day given and not working today: the bot replies with a calendar, one tap reports it", () => {
+  const h = harness();
+  h.reply("daniel", "sorry I can't make it");
+  const m = h.s.crew.find((c) => c.id === "daniel")!.thread.at(-1)!;
+  assert.equal(m.buttons?.length, 8);
+  assert.match(m.buttons![2].data, /^l:daniel:1970-01-03$/);
+  h.go({ type: "leave", crewId: "hana", day: "later", date: "1970-01-02" });
+  assert.equal(h.s.notices.at(-1)!.day, "tomorrow", "a tapped date is routed to tomorrow when it is tomorrow");
+});

@@ -150,7 +150,7 @@ export class Runtime {
       setTimeout(() => void this.inbound(crewId, line), 1800 + Math.random() * 2200);
       return;
     }
-    const wantsAnswer = m.tag === "offer" || m.tag === "chase" || (m.tag === "info" && !!m.buttons?.length);
+    const wantsAnswer = m.tag === "offer" || m.tag === "chase" || (m.tag === "info" && !!m.buttons?.length && !m.buttons[0].data.startsWith("l:"));
     if (!wantsAnswer || c.status === "human") return;
     const i = this.persona.get(crewId) ?? 0;
     if (i >= c.persona.length) return;
