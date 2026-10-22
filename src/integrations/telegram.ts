@@ -62,6 +62,11 @@ export async function getUpdates(offset: number) {
   return call<TgUpdate[]>("getUpdates", { offset, timeout: 25, allowed_updates: ["message", "callback_query"] }, 35_000);
 }
 
+/** Tell Telegram to push every message to this server (used when the app is hosted publicly). */
+export async function setWebhook(url: string, secret: string) {
+  await call("setWebhook", { url, secret_token: secret, allowed_updates: ["message", "callback_query"], drop_pending_updates: false });
+}
+
 export async function deleteWebhook() {
   await call("deleteWebhook", { drop_pending_updates: false }).catch(() => undefined);
 }

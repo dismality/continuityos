@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-/** Basic auth for the manager dashboard when DASHBOARD_PASSWORD is set. The webhook stays public for Meta. */
+/** Manager login (browser password prompt) when DASHBOARD_PASSWORD is set. Webhooks and the staff leave page stay public. */
 export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-shiftpilot-pathname", request.nextUrl.pathname);
@@ -14,10 +14,10 @@ export function proxy(request: NextRequest) {
   }
   return new NextResponse("Authentication required", {
     status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="ShiftPilot manager"' },
+    headers: { "WWW-Authenticate": 'Basic realm="ContinuityOS manager"' },
   });
 }
 
 export const config = {
-  matcher: ["/((?!api/whatsapp|api/telegram|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api/whatsapp|api/telegram|api/live/leave|live/leave|employment-act-summary.pdf|_next/static|_next/image|favicon.ico).*)"],
 };

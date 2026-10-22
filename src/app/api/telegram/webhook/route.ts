@@ -9,6 +9,8 @@ export async function POST(request: Request) {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret || request.headers.get("x-telegram-bot-api-secret-token") !== secret) return new Response("forbidden", { status: 403 });
   const update = (await request.json()) as TgUpdate;
-  await live().handle(update);
+  const server = live();
+  await server.ready;
+  await server.handle(update);
   return Response.json({ ok: true });
 }

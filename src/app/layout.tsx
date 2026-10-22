@@ -32,7 +32,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const pathname = (await headers()).get("x-shiftpilot-pathname");
   const databaseFreeDemo = pathname === "/demo" || pathname?.startsWith("/live") === true;
   // Without a database the ShiftPilot dashboard can't run, so send people to the ContinuityOS live demo.
-  if (!integrations.database && pathname === "/") redirect("/live");
+  // ContinuityOS lives at /live; the older ShiftPilot dashboard only shows when explicitly turned on
+  if (pathname === "/" && (!integrations.database || !process.env.SHIFTPILOT_DASHBOARD)) redirect("/live");
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-muted/30">

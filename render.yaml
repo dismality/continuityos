@@ -1,0 +1,27 @@
+# Render blueprint: the real, always-on ContinuityOS (dashboard + Telegram bot + saved data).
+# Render → New → Blueprint → pick this repo. Secrets are typed into Render, never committed.
+services:
+  - type: web
+    name: continuityos
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/live/leave
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TELEGRAM_BOT_TOKEN # from @BotFather
+        sync: false
+      - key: DATABASE_URL # Neon connection string, keeps chats and timetables across restarts
+        sync: false
+      - key: DASHBOARD_PASSWORD # the manager's password for the dashboard
+        sync: false
+      - key: LIVE_PUBLIC_URL # this service's address, e.g. https://continuityos.onrender.com
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET # random, lets only Telegram post to the webhook
+        generateValue: true
+      - key: OPENROUTER_API_KEY # optional: better understanding of messy replies
+        sync: false

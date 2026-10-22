@@ -1,15 +1,17 @@
 import { z } from "zod";
-import { answerCallback, clearButtons, deleteWebhook, getMe, getUpdates, sendTelegram, setCommands, telegramEnabled, type TgUpdate } from "@/integrations/telegram";
+import { answerCallback, clearButtons, deleteWebhook, getMe, getUpdates, sendTelegram, setCommands, setWebhook, telegramEnabled, type TgUpdate } from "@/integrations/telegram";
 import { llmJson } from "@/integrations/llm";
 import { env } from "@/lib/env";
 import { parseGoal, parseReply, toHour } from "./parse.ts";
 import { Runtime, type Understanding } from "./runtime.ts";
-import { BUSINESS, fmtWindow } from "./scenario.ts";
-import type { ParsedReply } from "./types.ts";
+import { applyProfile, BUSINESS, fmtWindow } from "./scenario.ts";
+import { loadState, persistenceEnabled, saveState } from "./store.ts";
+import type { LiveState, ParsedReply } from "./types.ts";
 
 /**
- * Server-side Live Mode: one in-memory session per server process. No database needed.
- * Telegram via long polling (works behind NAT, no tunnel) or the optional webhook route.
+ * Server-side Live Mode: one session per server. With DATABASE_URL it is saved to Postgres and
+ * restored on start, so a hosted server can restart or sleep without losing the day.
+ * Telegram: webhook when hosted publicly (TELEGRAM_WEBHOOK_SECRET + LIVE_PUBLIC_URL), otherwise long polling.
  */
 
 const ReplySchema = z.object({
@@ -56,6 +58,9 @@ class LiveServer {
   bot?: string;
   private offset = 0;
   private polling = false;
+  private saveTimer?: ReturnType<typeof setTimeout>;
+  /** resolves once a saved session (if any) has been restored */
+  ready: Promise<void>;
 
   constructor() {
     const code = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -74,7 +79,30 @@ class LiveServer {
     // pretend staff answer by themselves, so real people on Telegram see the agent finish its work;
     // the presenter can switch this off under Demo controls
     this.rt.autoplay = true;
-    if (telegramEnabled()) void this.boot();
+    this.ready = this.restore().then(() => {
+      if (telegramEnabled()) void this.boot();
+    });
+  }
+
+  private async restore() {
+    try {
+      const saved = await loadState<LiveState>();
+      if (saved?.slots && saved.tomorrow && saved.notices) {
+        applyProfile(saved.businessId ?? "kopi");
+        this.rt.state = { ...saved, mode: "server", telegram: this.rt.state.telegram };
+        console.log(`[live] restored saved session (version ${saved.version})`);
+      }
+    } catch (e) {
+      console.error("[live] could not load saved session, starting fresh:", (e as Error).message);
+    }
+    if (persistenceEnabled()) this.rt.subscribe(() => this.scheduleSave());
+  }
+
+  private scheduleSave() {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      saveState(this.rt.state).catch((e) => console.error("[live] save failed:", (e as Error).message));
+    }, 700);
   }
 
   meta(): Meta {
@@ -98,7 +126,13 @@ class LiveServer {
         { command: "shift", description: "When am I working?" },
         { command: "help", description: "What this bot does" },
       ]);
-      if (!process.env.TELEGRAM_WEBHOOK_SECRET) {
+      const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+      const base = process.env.LIVE_PUBLIC_URL?.replace(/\/$/, "");
+      if (secret && base) {
+        // hosted: Telegram pushes each message to /api/telegram/webhook (wakes a sleeping server too)
+        await setWebhook(`${base}/api/telegram/webhook`, secret);
+      } else {
+        // laptop / no public address: fetch messages ourselves
         await deleteWebhook();
         void this.poll();
       }

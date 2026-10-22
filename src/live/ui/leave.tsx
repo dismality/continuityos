@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { businessById } from "../businesses.ts";
 import { fmtWindow } from "../scenario.ts";
 import type { LiveState } from "../types.ts";
 import type { LiveAction } from "../actions.ts";
 import { CalendarPlus, Check, Waves } from "./icons.tsx";
-import { useLive } from "./use-live.ts";
 
 type Act = (a: LiveAction) => Promise<{ ok: boolean; error?: string }>;
 
@@ -125,9 +124,23 @@ export function LeaveForm({ state, act }: { state: LiveState; act: Act }) {
   );
 }
 
-/** Standalone page at /live/leave for staff on their phones (server mode). */
+/** Standalone page at /live/leave for staff on their phones. Uses the public leave endpoint only. */
 export function LeaveApp() {
-  const { state, act } = useLive("server");
+  const [state, setState] = useState<LiveState | null>(null);
+  const load = useCallback(async () => {
+    const r = await fetch("/api/live/leave", { cache: "no-store" }).catch(() => null);
+    if (r?.ok) setState((await r.json()) as LiveState);
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const act: Act = async (a) => {
+    if (a.action !== "leave") return { ok: false, error: "Not allowed" };
+    const r = await fetch("/api/live/leave", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ crewId: a.crewId, day: a.day, date: a.date }) });
+    const j = (await r.json().catch(() => ({ ok: false }))) as { ok: boolean; error?: string };
+    void load();
+    return j;
+  };
   const biz = businessById(state?.businessId);
   return (
     <div className="dashboard beach beach-ground flex min-h-screen items-start justify-center px-4 py-10 text-foreground">
