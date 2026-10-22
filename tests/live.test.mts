@@ -239,3 +239,16 @@ test("leave for a day later this week: the agent books cover from the usual rost
   assert.equal(h.s.notices[0].status, "covered");
   assert.match(h.s.managerInbox.at(-1)!.text, /27 Oct/);
 });
+
+test("the person who gave early notice hears back when it's covered, and nobody is asked for two days at once", () => {
+  const h = harness();
+  h.reply("aisha", "can't make it tmr");
+  const n = h.s.notices[0];
+  const first = n.asked[0];
+  h.reply("aisha", "sorry, fever, can't come in today");
+  assert.equal(h.s.goal?.trigger?.kind, "sick");
+  assert.ok(!h.s.crew.find((c) => c.id === first)!.contactedAt, "the person asked about tomorrow is not also asked about today");
+  h.reply(first, "yes");
+  assert.equal(h.s.notices[0].status, "covered");
+  assert.match(h.s.crew.find((c) => c.id === "aisha")!.thread.at(-1)!.text, /covered/);
+});
