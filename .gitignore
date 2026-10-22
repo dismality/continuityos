@@ -9,3 +9,6 @@ next-env.d.ts
 npm-debug.log*
 
 /out
+
+# local git bundles (shared outside GitHub)
+*.bundle
