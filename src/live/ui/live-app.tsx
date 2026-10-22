@@ -95,7 +95,7 @@ function Head({ icon, title, sub, right }: { icon: ReactNode; title: string; sub
     <div className="flex flex-wrap items-start justify-between gap-3 border-b-[1.5px] border-foreground px-5 py-4">
       <div className="min-w-0">
         <h2 className="font-display flex items-center gap-2 text-lg font-semibold">
-          <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#ece6da]">{icon}</span>
+          <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#fde3d8] text-[#c8431c]">{icon}</span>
           {title}
         </h2>
         {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
@@ -324,7 +324,7 @@ function StatusCard({ state, act, now, meta }: { state: LiveState; act: Act; now
   return (
     <Box className="overflow-hidden" id="status">
       <div className={`flex items-start gap-4 border-b-[1.5px] border-foreground p-5 transition-colors duration-500 ${tone}`}>
-        <span className={`flex size-12 shrink-0 items-center justify-center rounded-xl border-[1.5px] border-foreground shadow-[2px_2px_0_0_#111] ${live || p === "done" ? "bg-[#1f5f5b] text-white" : "bg-background"}`}>{icon}</span>
+        <span className={`flex size-12 shrink-0 items-center justify-center rounded-xl border-[1.5px] border-foreground shadow-[2px_2px_0_0_#111] ${live || p === "done" ? "bg-[#1f5f5b] text-white" : "bg-[#fde3d8] text-[#c8431c]"}`}>{icon}</span>
         <div className="min-w-0">
           <h1 key={title} className="font-display lv-pop text-[1.75rem] leading-tight font-bold text-balance">
             {title}
@@ -503,7 +503,9 @@ function Metrics({ state }: { state: LiveState }) {
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <Label>Timetable coverage</Label>
-            <Users className="size-4" />
+            <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#fde3d8] text-[#c8431c]">
+              <Users className="size-4" />
+            </span>
           </div>
           <p className="text-xs text-muted-foreground">
             {have}h of {need}h staffed today
@@ -534,7 +536,7 @@ function Metric({ icon, label, value, hint, accent = false, delay = 0 }: { icon:
     <div style={{ "--d": `${delay}ms` } as CSSProperties} className={`lv-rise rounded-2xl border-[1.5px] border-foreground p-4 ${SHADOW} ${accent ? "bg-[#ece6da]" : "bg-background"}`}>
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{label}</span>
-        {icon}
+        <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#fde3d8] text-[#c8431c]">{icon}</span>
       </div>
       <p className="font-display mt-3 text-3xl font-bold">{value}</p>
       <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
@@ -1149,7 +1151,7 @@ function EvidenceLog({ state }: { state: LiveState }) {
       <details>
         <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-5">
           <span className="font-display flex items-center gap-2 text-lg font-semibold">
-            <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#ece6da]">
+            <span className="flex size-7 items-center justify-center rounded-lg border-[1.5px] border-foreground bg-[#fde3d8] text-[#c8431c]">
               <Activity className="size-4" />
             </span>
             Full evidence log
