@@ -39,5 +39,6 @@ export const integrations = {
   whatsapp: Boolean(env.whatsapp.token && env.whatsapp.phoneNumberId),
   openrouter: Boolean(env.openrouterKey),
   sheets: Boolean(env.sheets.clientEmail && env.sheets.privateKey && env.sheets.spreadsheetId),
-  database: Boolean(env.databaseUrl),
+  // the example placeholder from .env.example is not a real database
+  database: Boolean(env.databaseUrl) && !/@host:5432\/dbname/.test(env.databaseUrl ?? ""),
 };
