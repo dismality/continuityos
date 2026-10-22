@@ -682,7 +682,7 @@ function contactWave(ctx: Ctx) {
   for (const r of rank(s.crew, s.goal)) {
     if (slots <= 0) break;
     const c = crewById(s, r.crewId)!;
-    if (c.status !== "bench" || c.aiPaused) continue;
+    if (c.status !== "bench" || c.aiPaused || c.advance !== undefined) continue; // not someone already being asked about another day
     offer(ctx, c, ask, r.reasons.join(" · "));
     slots--;
   }
@@ -879,12 +879,13 @@ function advanceAsk(ctx: Ctx, n: Notice) {
   const out = crewById(s, n.crewId)!;
   const windowsOf = (id: string) => roster.flatMap((x) => x.assignments.filter((a) => a.crewId === id).map((a) => a.window));
   const pool = s.crew
-    .filter((x) => x.id !== n.crewId && !n.asked.includes(x.id) && x.advance === undefined && (n.day === "later" || (x.status !== "absent" && x.checkin !== "out")))
+    .filter((x) => x.id !== n.crewId && !n.asked.includes(x.id) && x.advance === undefined && !PENDING.has(x.status) && x.status !== "accepted" && (n.day === "later" || (x.status !== "absent" && x.checkin !== "out")))
     .map((x) => ({ ...x, today: windowsOf(x.id), nextShiftStart: undefined }));
   const next = rank(pool, { window: sl.window, absent: "", needsCert: sl.needsCert })[0];
   if (!next) {
     n.status = "no_cover";
     log(ctx, "agent", "planner", `${n.day === "tomorrow" ? "Tomorrow" : n.label}: nobody eligible left for ${sl.role} ${fmtWindow(sl.window)}`, `${n.asked.length} asked`, "fail");
+    send(ctx, out, "I couldn't find cover myself, so I've passed it to the manager. You don't need to do anything else 🙏", "info");
     notifyManager(ctx, `⚠️ Heads-up for ${n.day === "tomorrow" ? "tomorrow" : n.label}: ${out.name} can't make ${lower(sl.role)} ${fmtWindow(sl.window)}. I asked ${n.asked.length} people and nobody is free. Can you take a look?`);
     return;
   }
@@ -918,6 +919,7 @@ function onAdvanceReply(ctx: Ctx, c: Crew, p: NonNullable<Msg["parsed"]>): boole
     const out = crewById(s, n.crewId)!;
     log(ctx, "agent", "timetable", `${n.day === "tomorrow" ? "Tomorrow's" : `${n.label}'s`} timetable updated: ${c.name} covers ${sl.role} ${fmtWindow(sl.window)}`, `sorted ahead of time, ${n.asked.length} asked`);
     send(ctx, c, `Thank you ${c.name}! ✅ You're on ${when} ${lower(sl.role)} shift, ${fmtWindow(sl.window)}. The timetable is updated.`, "confirm");
+    send(ctx, out, `✅ Update: ${when} ${lower(sl.role)} shift (${fmtWindow(sl.window)}) is covered. Nothing else needed from you. Take care 🙏`, "info");
     notifyManager(ctx, `🗓 Sorted early: ${out.name} can't make ${when} ${lower(sl.role)} shift (${fmtWindow(sl.window)}). ${c.name} is covering and the timetable is updated.\n\nNothing needed from you.`);
     return true;
   }

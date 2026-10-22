@@ -71,6 +71,9 @@ class LiveServer {
         : undefined,
       llmUnderstanding,
     ).start();
+    // pretend staff answer by themselves, so real people on Telegram see the agent finish its work;
+    // the presenter can switch this off under Demo controls
+    this.rt.autoplay = true;
     if (telegramEnabled()) void this.boot();
   }
 
