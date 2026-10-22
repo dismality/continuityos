@@ -134,15 +134,9 @@ class LiveServer {
         const crew = rt.state.crew.find((c) => c.id === id);
         if (crew?.seat?.kind === "telegram" && crew.seat.chatId === chatId) rt.button(id, action);
       } else if (kind === "l") {
-        // leave calendar: l:<crewId>:<YYYY-MM-DD>
+        // calendar tap: l:<crewId>:<YYYY-MM-DD>; the agent works out whether it's today, tomorrow or later
         const crew = rt.state.crew.find((c) => c.id === id);
-        if (crew?.seat?.kind === "telegram" && crew.seat.chatId === chatId) {
-          const days = nextDaysSG();
-          const i = days.findIndex((d) => d.iso === action);
-          if (i === 0) rt.dispatch({ type: "leave", crewId: id, day: "today", via: "leave_link" });
-          else if (i === 1) rt.dispatch({ type: "leave", crewId: id, day: "tomorrow", via: "leave_link" });
-          else if (i > 1) rt.dispatch({ type: "leave", crewId: id, day: "later", date: action, via: "leave_link" });
-        }
+        if (crew?.seat?.kind === "telegram" && crew.seat.chatId === chatId && /^\d{4}-\d{2}-\d{2}$/.test(action)) rt.dispatch({ type: "leave", crewId: id, day: "later", date: action, via: "leave_link" });
       } else if (kind === "g" && chatId && chatId === rt.state.manager.chatId) {
         rt.dispatch({ type: "decide", gateId: id, approve: action === "1", via: "telegram" });
       }

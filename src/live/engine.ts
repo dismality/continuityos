@@ -1,5 +1,6 @@
 import { buildPlan, conditionsFor, rank, whyNot } from "./planner.ts";
 import { applyProfile, BUSINESS, DEFAULT_BASELINE, DEFAULT_SETTINGS, fmtHour, fmtWindow, freshCrew, freshSlots, overlaps } from "./scenario.ts";
+import { ABSENCE, isoOf, parseWhen, weekAhead } from "./when.ts";
 import type { AuditEntry, Button, Crew, Effect, Gate, Goal, LiveEvent, LiveState, Msg, Notice, Plan, Slot, Step, Window } from "./types.ts";
 
 /**
@@ -140,11 +141,8 @@ function handle(ctx: Ctx, ev: LiveEvent) {
       const c = crewById(s, ev.crewId);
       if (!c) return;
       c.lastActivityAt = now;
+      if (ev.date) return reportDay(ctx, c, ev.date, ev.via ?? "leave_link");
       if (ev.day === "tomorrow") return earlyOut(ctx, c, ev.via ?? "leave_link");
-      if (ev.day === "later" && ev.date) {
-        if (s.notices.some((n) => n.crewId === c.id && n.date === ev.date)) return;
-        return earlyOut(ctx, c, ev.via ?? "leave_link", ev.date);
-      }
       const sl = slotOf(s, c.id);
       if (!sl) {
         log(ctx, "crew", "leave link", `${c.name} used the leave link for today but isn't on today's timetable`, undefined, "warn");
@@ -430,6 +428,18 @@ function onReply(ctx: Ctx, c: Crew, parsed: NonNullable<Msg["parsed"]>) {
   // ahead-of-time cover for tomorrow: an open offer, the evening check-in, or "can't make it tmr" in chat
   if (c.advance !== undefined && onAdvanceReply(ctx, c, p)) return;
   const outIntent = p.intent === "cannot_work" || p.intent === "decline" || p.intent === "withdraw";
+  // "can't come on Saturday", "MC tmr", "can't make the 27th": go straight to work for those days.
+  // Not while they're answering an offer ("sorry can't tmr" there just means no).
+  const answeringOffer = PENDING.has(c.status) || c.status === "accepted";
+  if ((outIntent || ABSENCE.test(lastText)) && !answeringOffer) {
+    const dates = parseWhen(lastText, ctx.now);
+    if (dates && dates.length) {
+      for (const d of dates) reportDay(ctx, c, d, c.checkin === "asked" ? "checkin" : "chat");
+      return;
+    }
+    if (dates) return askWhichDay(ctx, c, "I can arrange cover up to a week ahead. For later dates, please tell your manager. Which day in the next week can't you make?");
+    if (!mine && c.checkin !== "asked") return askWhichDay(ctx, c, "Sorry to hear that 🙏 Which day can't you make? Tap one, no reason needed.");
+  }
   if (c.checkin === "asked") {
     if (outIntent) return tomorrowOut(ctx, c, "checkin");
     if (p.intent === "accept" || p.intent === "on_way" || p.intent === "partial" || p.intent === "conditional") {
@@ -439,7 +449,6 @@ function onReply(ctx: Ctx, c: Crew, parsed: NonNullable<Msg["parsed"]>) {
       return;
     }
   }
-  if (outIntent && /\b(tmr|tmrw|tml|tomorrow|tomolo)\b/i.test(lastText) && tomorrowSlotOf(s, c.id)) return tomorrowOut(ctx, c, "chat");
 
   // someone on today's timetable talking about their own shift
   if (mine && c.status !== "confirmed" && !PENDING.has(c.status) && c.status !== "accepted") {
@@ -869,7 +878,36 @@ function earlyOut(ctx: Ctx, c: Crew, via: Notice["via"], date?: string) {
   advanceAsk(ctx, n);
 }
 
-/** kept for the chat and check-in paths, which are always about tomorrow */
+/** Send a tap-to-pick calendar: today plus the next 7 days. */
+function askWhichDay(ctx: Ctx, c: Crew, text: string) {
+  const buttons = weekAhead(ctx.now).map((d, i) => ({ label: `${i === 0 ? "Today · " : i === 1 ? "Tomorrow · " : ""}${d.label}`, data: `l:${c.id}:${d.iso}` }));
+  send(ctx, c, text, "info", buttons);
+}
+
+/** One reported day, wherever it came from (chat, calendar tap, leave link): today, tomorrow or later this week. */
+function reportDay(ctx: Ctx, c: Crew, iso: string, via: Notice["via"]) {
+  const { s, now } = ctx;
+  const base = new Date(now);
+  const today = isoOf(base);
+  const tomorrow = isoOf(new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1, 12));
+  if (iso === today) {
+    const sl = slotOf(s, c.id);
+    if (!sl) {
+      send(ctx, c, "Thanks for letting me know! You're not on today's timetable, so there's nothing to change 🙂", "info");
+      return;
+    }
+    if (c.status === "absent") return;
+    log(ctx, "crew", via === "chat" ? channelOf(c) : "leave link", `${c.name} can't work today`, "the reason stays private");
+    send(ctx, c, `Thanks for telling us, ${c.name}. Rest up 🙏 I'll find cover for your ${fmtWindow(sl.window)} shift today; you don't need to do anything else.`, "info");
+    dropOut(ctx, c, "sick", "Reported they can't work today");
+    return;
+  }
+  if (s.notices.some((n) => n.crewId === c.id && (n.date === iso || (iso === tomorrow && n.day === "tomorrow")))) return;
+  if (iso === tomorrow) return earlyOut(ctx, c, via);
+  earlyOut(ctx, c, via, iso);
+}
+
+/** kept for the check-in path, which is always about tomorrow */
 const tomorrowOut = (ctx: Ctx, c: Crew, via: Notice["via"]) => earlyOut(ctx, c, via);
 
 function advanceAsk(ctx: Ctx, n: Notice) {
