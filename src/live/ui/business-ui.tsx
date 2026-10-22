@@ -23,13 +23,16 @@ const SITE = "https://continuityos.davidwong51423.workers.dev";
 
 export function switchBusiness(act: Act, id: string) {
   const run = () => act({ action: "business", id });
-  const doc = document as Document & { startViewTransition?: (cb: () => Promise<void>) => unknown };
+  type VT = { ready: Promise<void>; finished: Promise<void>; updateCallbackDone: Promise<void> };
+  const doc = document as Document & { startViewTransition?: (cb: () => Promise<void>) => VT };
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (!doc.startViewTransition || reduce) return void run();
-  doc.startViewTransition(async () => {
+  if (!doc.startViewTransition || reduce || document.visibilityState !== "visible") return void run();
+  const t = doc.startViewTransition(async () => {
     await run();
     await new Promise((r) => setTimeout(r, 80));
   });
+  // a skipped transition (tab hidden, another one started) is fine: the switch itself still happens
+  for (const p of [t.ready, t.finished, t.updateCallbackDone]) p?.catch(() => undefined);
 }
 
 // ───────────────────────────────── map hero + switcher
