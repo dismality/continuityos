@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { answerCallback, clearButtons, deleteWebhook, getMe, getUpdates, sendTelegram, telegramEnabled, type TgUpdate } from "@/integrations/telegram";
+import { answerCallback, clearButtons, deleteWebhook, getMe, getUpdates, sendTelegram, setCommands, telegramEnabled, type TgUpdate } from "@/integrations/telegram";
 import { llmJson } from "@/integrations/llm";
 import { env } from "@/lib/env";
 import { parseGoal, parseReply, toHour } from "./parse.ts";
@@ -90,6 +90,11 @@ class LiveServer {
       const me = await getMe();
       this.bot = me.username;
       this.rt.state = { ...this.rt.state, telegram: { enabled: true, bot: me.username } };
+      await setCommands([
+        { command: "leave", description: "Can't make a shift? Pick the day" },
+        { command: "shift", description: "When am I working?" },
+        { command: "help", description: "What this bot does" },
+      ]);
       if (!process.env.TELEGRAM_WEBHOOK_SECRET) {
         await deleteWebhook();
         void this.poll();
@@ -125,6 +130,16 @@ class LiveServer {
       if (kind === "r") {
         const crew = rt.state.crew.find((c) => c.id === id);
         if (crew?.seat?.kind === "telegram" && crew.seat.chatId === chatId) rt.button(id, action);
+      } else if (kind === "l") {
+        // leave calendar: l:<crewId>:<YYYY-MM-DD>
+        const crew = rt.state.crew.find((c) => c.id === id);
+        if (crew?.seat?.kind === "telegram" && crew.seat.chatId === chatId) {
+          const days = nextDaysSG();
+          const i = days.findIndex((d) => d.iso === action);
+          if (i === 0) rt.dispatch({ type: "leave", crewId: id, day: "today", via: "leave_link" });
+          else if (i === 1) rt.dispatch({ type: "leave", crewId: id, day: "tomorrow", via: "leave_link" });
+          else if (i > 1) rt.dispatch({ type: "leave", crewId: id, day: "later", date: action, via: "leave_link" });
+        }
       } else if (kind === "g" && chatId && chatId === rt.state.manager.chatId) {
         rt.dispatch({ type: "decide", gateId: id, approve: action === "1", via: "telegram" });
       }
@@ -167,8 +182,23 @@ class LiveServer {
     }
     const crew = rt.state.crew.find((c) => c.seat?.kind === "telegram" && c.seat.chatId === chatId);
     if (crew && /^\/leave\b/i.test(text)) {
-      const base = process.env.LIVE_PUBLIC_URL?.replace(/\/$/, "");
-      await sendTelegram(chatId, base ? `Can't make a shift? Use the leave link: ${base}/live/leave\n\nOr just tell me here, e.g. "can't make it tmr".` : `Can't make a shift? Just tell me here, e.g. "can't make it tmr", and I'll arrange cover early.`);
+      // a tap-to-pick calendar: today plus the next 7 days
+      const buttons = nextDaysSG().map((d, i) => ({ label: `${i === 0 ? "Today · " : i === 1 ? "Tomorrow · " : ""}${d.label}`, data: `l:${crew.id}:${d.iso}` }));
+      await sendTelegram(chatId, "Which day can't you make? Tap one. No reason needed, and reasons are never shared with other staff 🙏", buttons);
+      return;
+    }
+    if (crew && /^\/shift\b/i.test(text)) {
+      const today = rt.state.slots.find((sl) => sl.assignments.some((a) => a.crewId === crew.id));
+      const tmr = rt.state.tomorrow.find((sl) => sl.assignments.some((a) => a.crewId === crew.id));
+      const line = (sl: typeof today) => (sl ? `${sl.role} ${fmtWindow(sl.window)}` : "not working");
+      await sendTelegram(chatId, `Hi ${crew.name} 👋\n\nToday: ${line(today)}\nTomorrow: ${line(tmr)}\n\nCan't make one? Send /leave.`);
+      return;
+    }
+    if (/^\/help\b/i.test(text)) {
+      await sendTelegram(
+        chatId,
+        `I'm the ${BUSINESS.name} rota assistant 🤖\n\n• Feeling unwell or can't come in? Just tell me in your own words, e.g. "fever, can't make it today" or "can't make it tmr". I'll take you off the timetable and find cover.\n• /leave: pick a day in the next week you can't work\n• /shift: see when you're working\n\nIf a shift needs cover I'll message you here. Reply however you like: "yes", "only after 7", "need a ride"...`,
+      );
       return;
     }
     if (crew) {
@@ -178,6 +208,16 @@ class LiveServer {
     }
     await sendTelegram(chatId, `Hi! Tap the link on the screen (or send /start) to join the ${BUSINESS.name} crew.`);
   }
+}
+
+/** Today plus the next 7 days in Singapore time, as YYYY-MM-DD with a short label. */
+function nextDaysSG() {
+  const iso = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore", year: "numeric", month: "2-digit", day: "2-digit" });
+  const label = new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", weekday: "short", day: "numeric", month: "short" });
+  return Array.from({ length: 8 }, (_, i) => {
+    const d = new Date(Date.now() + i * 86_400_000);
+    return { iso: iso.format(d), label: label.format(d).replace(",", "") };
+  });
 }
 
 const g = globalThis as unknown as { __continuityLive?: LiveServer };
