@@ -10,9 +10,20 @@ import { integrations } from "@/lib/env";
 type Sql = ReturnType<typeof postgres>;
 const g = globalThis as unknown as { __continuitySql?: Sql | null; __continuityTable?: Promise<unknown> };
 
+/** Neon's copy button adds channel_binding=require, which the postgres client would pass on as a server setting. */
+function cleanUrl(raw: string) {
+  try {
+    const u = new URL(raw);
+    u.searchParams.delete("channel_binding");
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
 function sql(): Sql | null {
   if (!integrations.database) return null;
-  if (g.__continuitySql === undefined) g.__continuitySql = postgres(process.env.DATABASE_URL!, { max: 2, prepare: false, idle_timeout: 20 });
+  if (g.__continuitySql === undefined) g.__continuitySql = postgres(cleanUrl(process.env.DATABASE_URL!), { max: 2, prepare: false, idle_timeout: 20 });
   return g.__continuitySql;
 }
 
